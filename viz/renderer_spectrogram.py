@@ -11,14 +11,17 @@ class SpectrogramRenderer:
         self.cfg = cfg
         self.audio = audio_np.astype(np.float32)
         self.window_size = int(cfg.spectrogram.window_size)
+        self.fft_size = int(cfg.spectrogram.fft_size)
         self.max_freq = float(cfg.spectrogram.max_freq_hz)
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
         self.window = _prepare_window(self.window_size)
+        self.windowed_buf = np.zeros((self.window_size, 2), dtype=np.float32)
+        self.segment_buf = np.zeros((self.window_size, 2), dtype=np.float32)
 
         self.spf = max(int(cfg.audio.target_sr // cfg.video.fps), 1)
         self.n_frames = int(np.ceil(self.audio.shape[0] / self.spf))
 
-        self.freqs = np.fft.rfftfreq(self.window_size, d=1.0 / cfg.audio.target_sr)
+        self.freqs = np.fft.rfftfreq(self.fft_size, d=1.0 / cfg.audio.target_sr)
         valid = self.freqs <= self.max_freq
         self.freqs = self.freqs[valid]
         self.valid_bins = valid
@@ -32,34 +35,48 @@ class SpectrogramRenderer:
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
         self.floor_db = float(cfg.spectrogram.floor_db)
-        self.ceiling_db = 0.0
+        self.ceiling_db = float(cfg.spectrogram.ceiling_db)
+        self.norm_denom = max(self.ceiling_db - self.floor_db, 1e-6)
+
+        fft_bins = np.count_nonzero(self.valid_bins)
+        self.spectrum_buf = np.zeros((fft_bins, 2), dtype=np.float32)
+        self.mag_db_buf = np.zeros_like(self.spectrum_buf)
+        self.norm_buf = np.zeros_like(self.spectrum_buf)
 
         if cfg.verbose:
             print("🎛 Spectrogram renderer")
             print(f"  frames         : {self.n_frames}")
             print(f"  window_size    : {self.window_size}")
             print(f"  scroll_px      : {self.scroll_px}")
+            print(f"  fft_size       : {self.fft_size}")
             print(f"  max_freq_hz    : {self.max_freq}")
 
     def _slice_audio(self, start: int) -> np.ndarray:
         end = start + self.window_size
-        segment = np.zeros((self.window_size, 2), dtype=np.float32)
+        segment = self.segment_buf
+        segment.fill(0.0)
         chunk = self.audio[start:end]
         segment[: chunk.shape[0]] = chunk
-        return segment * self.window[:, None]
+        np.multiply(segment, self.window[:, None], out=self.windowed_buf)
+        return self.windowed_buf
 
     def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
         start_sample = frame_idx * self.spf
         windowed = self._slice_audio(start_sample)
 
-        spectrum = np.abs(np.fft.rfft(windowed, axis=0))[self.valid_bins]
-        spectrum = np.maximum(spectrum, 1e-8)
-        mag_db = 20.0 * np.log10(spectrum)
-        norm = (mag_db - self.floor_db) / (self.ceiling_db - self.floor_db)
-        norm = np.clip(norm, 0.0, 1.0)
+        spectrum = np.fft.rfft(windowed, n=self.fft_size, axis=0)[self.valid_bins]
+        np.abs(spectrum, out=self.spectrum_buf)
+        np.maximum(self.spectrum_buf, 1e-12, out=self.spectrum_buf)
 
-        col_l = np.interp(self.freq_axis, self.freqs, norm[:, 0], left=0.0, right=0.0)
-        col_r = np.interp(self.freq_axis, self.freqs, norm[:, 1], left=0.0, right=0.0)
+        np.log10(self.spectrum_buf, out=self.mag_db_buf)
+        self.mag_db_buf *= 20.0
+
+        np.subtract(self.mag_db_buf, self.floor_db, out=self.norm_buf)
+        self.norm_buf *= 1.0 / self.norm_denom
+        np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
+
+        col_l = np.interp(self.freq_axis, self.freqs, self.norm_buf[:, 0], left=0.0, right=0.0)
+        col_r = np.interp(self.freq_axis, self.freqs, self.norm_buf[:, 1], left=0.0, right=0.0)
 
         # invert so low frequencies are at the bottom
         col_l = col_l[::-1]
