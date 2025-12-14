@@ -4,6 +4,7 @@ from queue import Queue
 from .config import AppConfig
 from .renderer_scrolling import ScrollingRenderer
 from .renderer_spectrogram import SpectrogramRenderer
+from .stats import format_batch_telemetry
 from .types import AlphaBatch, AudioChunk
 
 
@@ -30,7 +31,12 @@ def start_renderer_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, sto
 
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
-                    print(f"🧠 Renderer batch {n}: {dt:.4f}s => {fps_prod:.1f} fps (producer)")
+                    batch_bytes = int(alphas.nbytes)
+                    print(
+                        format_batch_telemetry(
+                            "🧠 Renderer (producer)", t, n, batch_bytes, alpha_out, fps_prod
+                        )
+                    )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
                 t += n
@@ -65,7 +71,12 @@ def start_spectrogram_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, 
 
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
-                    print(f"🧠 Spectrogram batch {n}: {dt:.4f}s => {fps_prod:.1f} fps (producer)")
+                    batch_bytes = int(alphas.nbytes)
+                    print(
+                        format_batch_telemetry(
+                            "🧠 Spectrogram (producer)", t, n, batch_bytes, alpha_out, fps_prod
+                        )
+                    )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
                 t += n

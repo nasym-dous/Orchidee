@@ -4,7 +4,7 @@ from queue import Queue
 import cv2
 from .config import AppConfig
 from .encode import mux_audio
-from .stats import PerfCounter, ram_mb
+from .stats import PerfCounter, batch_memory_mb, format_batch_telemetry, ram_mb
 from .types import FrameBatch
 
 
@@ -32,6 +32,7 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                 break
 
             batch: FrameBatch = item
+            t_batch0 = time.perf_counter()
             for frame in batch.frames:
                 out.write(frame)
                 written += 1
@@ -39,9 +40,36 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
 
                 if cfg.verbose and written % (cfg.video.fps * 5) == 0:
                     avg_fps = perf.frames / max(time.perf_counter() - perf.t0, 1e-6)
-                    print(f"📼 {written} frames | avg FPS ≈ {avg_fps:.1f} | RAM ≈ {ram_mb():.0f} MB")
+                    batch_bytes = sum(frame.nbytes for frame in batch.frames)
+                    frame_mb = batch_memory_mb(batch.frames)
+                    telemetry = format_batch_telemetry(
+                        "📼 Encoder (consumer)",
+                        batch.start_frame,
+                        len(batch.frames),
+                        batch_bytes,
+                        frames_in,
+                        avg_fps,
+                    )
+                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB")
 
             frames_in.task_done()
+            if cfg.verbose and (
+                batch.start_frame == 0 or batch.start_frame % (cfg.video.fps * 5) == 0
+            ):
+                dt_batch = time.perf_counter() - t_batch0
+                if dt_batch > 0:
+                    fps = len(batch.frames) / dt_batch
+                    batch_bytes = sum(frame.nbytes for frame in batch.frames)
+                    frame_mb = batch_memory_mb(batch.frames)
+                    telemetry = format_batch_telemetry(
+                        "📼 Encoder (consumer)",
+                        batch.start_frame,
+                        len(batch.frames),
+                        batch_bytes,
+                        frames_in,
+                        fps,
+                    )
+                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB (flush)")
 
         out.release()
         perf.stop()

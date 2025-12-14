@@ -66,7 +66,8 @@ class SpectrogramConfig:
 
 @dataclass
 class AppConfig:
-    verbose: bool = True
+    verbose: bool = True  # controls application logs
+    verbose_lib: bool = False  # controls noisy third-party tools (ffmpeg, etc.)
 
     paths: PathConfig = field(default_factory=PathConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
