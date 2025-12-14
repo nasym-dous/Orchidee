@@ -5,7 +5,7 @@ import numpy as np
 from .config import AppConfig
 from .compositor import compose_frame_from_alpha
 from .pipeline_audio import start_audio_source
-from .pipeline_renderer import start_renderer_filter
+from .pipeline_renderer import start_renderer_filter, start_spectrogram_filter
 from .pipeline_compositor import start_compositor_filter
 from .pipeline_encoder import start_encoder_sink
 from .types import AudioChunk, AlphaBatch, FrameBatch
@@ -28,7 +28,8 @@ def run_pipeline(cfg: AppConfig, cover_bgr: np.ndarray) -> str:
     threads: list[threading.Thread] = [
         start_encoder_sink(cfg, frame_q, stop_token),
         start_compositor_filter(cfg, cover_bgr, compose_frame_from_alpha, alpha_q, frame_q, stop_token),
-        start_renderer_filter(cfg, audio_q, alpha_q, stop_token),
+        # start_renderer_filter(cfg, audio_q, alpha_q, stop_token),
+        start_spectrogram_filter(cfg, audio_q, alpha_q, stop_token),
         start_audio_source(cfg, audio_q, stop_token),
     ]
 
