@@ -60,12 +60,12 @@ class ScrollConfig:
 class SpectrogramConfig:
     max_freq_hz: float = 24_000.0
     scroll_px: int = 4
-    window_size: int = 64
-    fft_size: int = 64
-    floor_db: float = -80.0
+    window_size: int = 2**14
+    fft_size: int = 2**14
+    floor_db: float = -15.0
     ceiling_db: float = 0.0
-    pre_emphasis: float = 0.0
-    denoise_reduction_db: float = 0.0
+    pre_emphasis: float = 0.99
+    denoise_reduction_db: float = 0
 
 
 @dataclass
