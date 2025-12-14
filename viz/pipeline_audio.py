@@ -23,12 +23,19 @@ def start_audio_source(cfg: AppConfig, output: Queue | Iterable[Queue], stop_tok
         with Timer("audio decode"):
             audio, sr = load_audio_stereo_ffmpeg(cfg.audio.audio_path, cfg.audio.target_sr, verbose=cfg.verbose)
 
+        if cfg.audio.analyze_duration_s is not None:
+            max_samples = int(cfg.audio.analyze_duration_s * sr)
+            if max_samples < audio.shape[0]:
+                audio = audio[:max_samples]
+
+        duration = audio.shape[0] / sr if sr else 0.0
+
         for q in outputs:
             q.put(AudioChunk(samples=audio, sample_rate=sr))
             q.put(stop_token)
 
         if cfg.verbose:
-            print(f"🎵 sr={sr} | samples={audio.shape[0]} | duration={audio.shape[0]/sr:.2f}s → outputs={len(outputs)}")
+            print(f"🎵 sr={sr} | samples={audio.shape[0]} | duration={duration:.2f}s → outputs={len(outputs)}")
 
     t = threading.Thread(target=_run, name="audio_source", daemon=True)
     t.start()

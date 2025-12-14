@@ -14,6 +14,7 @@ class PathConfig:
 class AudioConfig:
     audio_path: str = "music.mp3"
     target_sr: int = 48000
+    analyze_duration_s: float | None = None
 
 
 @dataclass
@@ -65,6 +66,16 @@ class SpectrogramConfig:
 
 
 @dataclass
+class FormantConfig:
+    enabled: bool = True
+    num_formants: int = 3
+    root_min_hz: float = 50.0
+    root_max_hz: float = 2000.0
+    neighborhood_hz: float = 80.0
+    trace_thickness: int = 1
+
+
+@dataclass
 class AppConfig:
     verbose: bool = True  # controls application logs
     verbose_lib: bool = False  # controls noisy third-party tools (ffmpeg, etc.)
@@ -75,6 +86,7 @@ class AppConfig:
     render: RenderConfig = field(default_factory=RenderConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
     spectrogram: SpectrogramConfig = field(default_factory=SpectrogramConfig)
+    formants: FormantConfig = field(default_factory=FormantConfig)
 
     @staticmethod
     def default() -> "AppConfig":
@@ -110,3 +122,10 @@ class AppConfig:
         assert self.spectrogram.scroll_px >= 1
         assert self.spectrogram.scroll_px <= self.render.render_w
         assert self.spectrogram.window_size > 0
+        if self.audio.analyze_duration_s is not None:
+            assert self.audio.analyze_duration_s > 0
+        assert self.formants.num_formants >= 0
+        assert self.formants.root_min_hz >= 0
+        assert self.formants.root_max_hz > self.formants.root_min_hz
+        assert self.formants.neighborhood_hz >= 0
+        assert self.formants.trace_thickness >= 1
