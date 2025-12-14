@@ -18,16 +18,16 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 1080
-    h: int = 1080
+    w: int = 480
+    h: int = 480
     fps: int = 60
     fourcc: str = "MJPG"
 
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1080
-    render_h: int = 1080
+    render_w: int = 480
+    render_h: int = 480
     batch: int = 8
     max_buffer_batches: int = 8
 
@@ -60,9 +60,9 @@ class ScrollConfig:
 class SpectrogramConfig:
     max_freq_hz: float = 24_000.0
     scroll_px: int = 4
-    window_size: int = 24000
-    fft_size: int = 24000
-    floor_db: float = -15.0
+    window_size: int = 64
+    fft_size: int = 64
+    floor_db: float = -80.0
     ceiling_db: float = 0.0
 
 

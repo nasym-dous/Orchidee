@@ -28,10 +28,25 @@ class SpectrogramRenderer:
         if self.freqs.size == 0:
             raise ValueError("No frequency bins available below max_freq_hz")
 
+        positive_freqs = self.freqs[self.freqs > 0]
+        if positive_freqs.size == 0:
+            raise ValueError("No positive frequency bins available for log scaling")
+
+        # Replace the DC bin with the smallest positive bin so log scaling works
+        if self.freqs[0] == 0.0:
+            self.freqs = self.freqs.copy()
+            self.freqs[0] = float(positive_freqs.min())
+
+        self.min_freq = float(positive_freqs.min())
+        self.log_freqs = np.log10(self.freqs)
+
         self.h = cfg.render.render_h
         self.w = cfg.render.render_w
         self.half_h = self.h // 2
-        self.freq_axis = np.linspace(0.0, self.max_freq, self.half_h, dtype=np.float32)
+        self.freq_axis = np.logspace(
+            np.log10(self.min_freq), np.log10(self.max_freq), self.half_h, dtype=np.float32
+        )
+        self.log_freq_axis = np.log10(self.freq_axis)
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
         self.floor_db = float(cfg.spectrogram.floor_db)
@@ -75,8 +90,12 @@ class SpectrogramRenderer:
         self.norm_buf *= 1.0 / self.norm_denom
         np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
-        col_l = np.interp(self.freq_axis, self.freqs, self.norm_buf[:, 0], left=0.0, right=0.0)
-        col_r = np.interp(self.freq_axis, self.freqs, self.norm_buf[:, 1], left=0.0, right=0.0)
+        col_l = np.interp(
+            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 0], left=0.0, right=0.0
+        )
+        col_r = np.interp(
+            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 1], left=0.0, right=0.0
+        )
 
         # invert so low frequencies are at the bottom
         col_l = col_l[::-1]
