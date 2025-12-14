@@ -18,16 +18,16 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 640
-    h: int = 480
+    w: int = 1920
+    h: int = 1080
     fps: int = 60
     fourcc: str = "MJPG"
 
 
 @dataclass
 class RenderConfig:
-    render_w: int = 640
-    render_h: int = 480
+    render_w: int = 1920
+    render_h: int = 1080
     batch: int = 8
     max_buffer_batches: int = 8
 
@@ -39,12 +39,12 @@ class RenderConfig:
 
 @dataclass
 class ScrollConfig:
-    seconds_to_center: float = 3.0
+    seconds_to_center: float = 0.2
     # pixels per frame to scroll left (and number of new columns written at right)
     scroll_px: int = 6
 
     # thickness is conv kernel radius
-    line_thickness: int = 2
+    line_thickness: int = 1
 
     # trace dynamics
     decay: float = 1.0

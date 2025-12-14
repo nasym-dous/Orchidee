@@ -1,89 +1,38 @@
-import threading
 import queue
-import time
-import cv2
-from typing import Callable
+from queue import Queue
+import threading
 import numpy as np
 from .config import AppConfig
-from .stats import PerfCounter, ram_mb
+from .compositor import compose_frame_from_alpha
+from .pipeline_audio import start_audio_source
+from .pipeline_renderer import start_renderer_filter
+from .pipeline_compositor import start_compositor_filter
+from .pipeline_encoder import start_encoder_sink
+from .types import AudioChunk, AlphaBatch, FrameBatch
 
 
-CompositorFn = Callable[[np.ndarray, np.ndarray, AppConfig], np.ndarray]
+TypedQueue = Queue[AudioChunk | AlphaBatch | FrameBatch | object]
 
 
-def run_pipeline(
-    cfg: AppConfig,
-    renderer,
-    cover_bgr: np.ndarray,
-    compositor: CompositorFn,
-) -> str:
-    q = queue.Queue(cfg.render.max_buffer_batches)
-    STOP = object()
+def run_pipeline(cfg: AppConfig, cover_bgr: np.ndarray) -> str:
+    """Assemble the filters into a linear pipeline.
 
-    perf = PerfCounter()
+    source -> renderer -> compositor -> encoder
+    """
+    stop_token = object()
 
-    def producer():
-        if cfg.verbose:
-            print("🚀 Producer started")
-        t = 0
-        while t < renderer.n_frames:
-            n = min(cfg.render.batch, renderer.n_frames - t)
+    audio_q: TypedQueue = queue.Queue(maxsize=1)
+    alpha_q: TypedQueue = queue.Queue(maxsize=cfg.render.max_buffer_batches)
+    frame_q: TypedQueue = queue.Queue(maxsize=cfg.render.max_buffer_batches)
 
-            t0 = time.perf_counter()
-            alphas = renderer.next_alphas(t, n)
-            dt = time.perf_counter() - t0
+    threads: list[threading.Thread] = [
+        start_encoder_sink(cfg, frame_q, stop_token),
+        start_compositor_filter(cfg, cover_bgr, compose_frame_from_alpha, alpha_q, frame_q, stop_token),
+        start_renderer_filter(cfg, audio_q, alpha_q, stop_token),
+        start_audio_source(cfg, audio_q, stop_token),
+    ]
 
-            if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
-                fps_prod = n / max(dt, 1e-6)
-                print(f"🧠 Producer batch {n}: {dt:.4f}s => {fps_prod:.1f} fps (producer)")
+    for t in threads:
+        t.join()
 
-            q.put(alphas)
-            t += n
-        q.put(STOP)
-
-    def consumer():
-        out = cv2.VideoWriter(
-            cfg.paths.out_avi,
-            cv2.VideoWriter_fourcc(*cfg.video.fourcc),
-            cfg.video.fps,
-            (cfg.video.w, cfg.video.h)
-        )
-        if not out.isOpened():
-            raise RuntimeError("VideoWriter non ouvert")
-
-        perf.start()
-        written = 0
-
-        while True:
-            item = q.get()
-            if item is STOP:
-                break
-
-            for alpha_small in item:
-                frame = compositor(cover_bgr, alpha_small, cfg)
-                out.write(frame)
-                written += 1
-                perf.tick(1)
-
-                if cfg.verbose and written % (cfg.video.fps * 5) == 0:
-                    avg_fps = perf.frames / max(time.perf_counter() - perf.t0, 1e-6)
-                    print(f"📼 {written} frames | avg FPS ≈ {avg_fps:.1f} | RAM ≈ {ram_mb():.0f} MB")
-
-            q.task_done()
-
-        out.release()
-        perf.stop()
-
-    tp = threading.Thread(target=producer, name="producer")
-    tc = threading.Thread(target=consumer, name="consumer")
-    tc.start(); tp.start()
-    tp.join(); tc.join()
-
-    if cfg.verbose:
-        print("🚀 Render performance")
-        print(f"  frames rendered : {perf.frames}")
-        print(f"  avg FPS         : {perf.avg_fps():.2f}")
-        print(f"  RAM (now)       : {ram_mb():.0f} MB")
-        print(f"✅ Vidéo MJPG terminée : {cfg.paths.out_avi}")
-
-    return cfg.paths.out_avi
+    return cfg.paths.out_final
