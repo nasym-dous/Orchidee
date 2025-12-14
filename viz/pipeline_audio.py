@@ -11,7 +11,11 @@ def start_audio_source(cfg: AppConfig, output: Queue, stop_token: object) -> thr
 
     def _run():
         with Timer("audio decode"):
-            audio, sr = load_audio_stereo_ffmpeg(cfg.audio.audio_path, cfg.audio.target_sr, verbose=cfg.verbose)
+            audio, sr = load_audio_stereo_ffmpeg(
+                cfg.audio.audio_path,
+                cfg.audio.target_sr,
+                verbose=cfg.verbose_lib,
+            )
         output.put(AudioChunk(samples=audio, sample_rate=sr))
         output.put(stop_token)
         if cfg.verbose:
