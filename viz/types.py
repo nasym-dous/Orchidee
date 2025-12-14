@@ -17,6 +17,7 @@ class AlphaBatch:
 
     start_frame: int
     alphas: np.ndarray
+    telemetry: dict | None = None
 
 
 @dataclass

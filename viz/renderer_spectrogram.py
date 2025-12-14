@@ -48,9 +48,26 @@ class SpectrogramRenderer:
         segment[: chunk.shape[0]] = chunk
         return segment * self.window[:, None]
 
-    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def _slice_frame_audio(self, start: int) -> np.ndarray:
+        end = start + self.spf
+        segment = np.zeros((self.spf, 2), dtype=np.float32)
+        chunk = self.audio[start:end]
+        segment[: chunk.shape[0]] = chunk
+        return segment
+
+    def _compute_levels(self, start_sample: int) -> tuple[np.ndarray, np.ndarray]:
+        frame_audio = self._slice_frame_audio(start_sample)
+        power = np.mean(frame_audio ** 2, axis=0)
+        rms_db = 10.0 * np.log10(np.maximum(power, 1e-12))
+
+        lufs_offset = -0.691  # calibration constant from ITU-R BS.1770
+        lufs_db = lufs_offset + 10.0 * np.log10(np.maximum(power, 1e-12))
+        return rms_db.astype(np.float32), lufs_db.astype(np.float32)
+
+    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         start_sample = frame_idx * self.spf
         windowed = self._slice_audio(start_sample)
+        rms_db, lufs_db = self._compute_levels(start_sample)
 
         spectrum = np.abs(np.fft.rfft(windowed, axis=0))[self.valid_bins]
         spectrum = np.maximum(spectrum, 1e-8)
@@ -67,14 +84,14 @@ class SpectrogramRenderer:
 
         col_l = np.tile(col_l[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
         col_r = np.tile(col_r[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
-        return col_l.astype(np.float32), col_r.astype(np.float32)
+        return col_l.astype(np.float32), col_r.astype(np.float32), rms_db, lufs_db
 
     def _render_frame(self, frame_idx: int) -> np.ndarray:
         self.heat *= float(self.cfg.scroll.decay)
         self.heat[:, :-self.scroll_px] = self.heat[:, self.scroll_px:]
         self.heat[:, -self.scroll_px:] = 0.0
 
-        col_l, col_r = self._compute_columns(frame_idx)
+        col_l, col_r, rms_db, lufs_db = self._compute_columns(frame_idx)
 
         top = self.heat[: self.half_h]
         bottom = self.heat[self.half_h :]
@@ -86,8 +103,19 @@ class SpectrogramRenderer:
         gamma = float(self.cfg.scroll.gamma)
         alpha = 1.0 - np.exp(-self.heat * reveal_gain)
         alpha = np.clip(alpha ** gamma, 0.0, 1.0)
-        return (alpha * 255.0).astype(np.uint8)
+        return (alpha * 255.0).astype(np.uint8), rms_db, lufs_db
 
-    def next_alphas(self, t0: int, n: int) -> np.ndarray:
-        frames = [self._render_frame(t0 + i) for i in range(n)]
-        return np.stack(frames, axis=0)
+    def next_alphas(self, t0: int, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        frames = []
+        rms_levels = []
+        lufs_levels = []
+        for i in range(n):
+            alpha, rms_db, lufs_db = self._render_frame(t0 + i)
+            frames.append(alpha)
+            rms_levels.append(rms_db)
+            lufs_levels.append(lufs_db)
+        return (
+            np.stack(frames, axis=0),
+            np.stack(rms_levels, axis=0),
+            np.stack(lufs_levels, axis=0),
+        )

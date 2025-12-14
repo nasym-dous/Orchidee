@@ -65,6 +65,18 @@ class SpectrogramConfig:
 
 
 @dataclass
+class TelemetryConfig:
+    enabled: bool = True
+    floor_rms_db: float = -60.0
+    floor_lufs_db: float = -40.0
+    padding_px: int = 8
+    bar_width_px: int = 12
+    channel_gap_px: int = 6
+    meter_gap_px: int = 12
+    meter_height_ratio: float = 0.92
+
+
+@dataclass
 class AppConfig:
     verbose: bool = True
 
@@ -74,6 +86,7 @@ class AppConfig:
     render: RenderConfig = field(default_factory=RenderConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
     spectrogram: SpectrogramConfig = field(default_factory=SpectrogramConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
 
     @staticmethod
     def default() -> "AppConfig":
@@ -109,3 +122,8 @@ class AppConfig:
         assert self.spectrogram.scroll_px >= 1
         assert self.spectrogram.scroll_px <= self.render.render_w
         assert self.spectrogram.window_size > 0
+        assert 0.0 < self.telemetry.meter_height_ratio <= 1.0
+        assert self.telemetry.bar_width_px > 0
+        assert self.telemetry.padding_px >= 0
+        assert self.telemetry.channel_gap_px >= 0
+        assert self.telemetry.meter_gap_px >= 0

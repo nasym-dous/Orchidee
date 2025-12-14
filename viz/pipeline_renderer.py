@@ -60,14 +60,20 @@ def start_spectrogram_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, 
             while t < renderer.n_frames:
                 n = min(cfg.render.batch, renderer.n_frames - t)
                 t0 = time.perf_counter()
-                alphas = renderer.next_alphas(t, n)
+                alphas, rms_levels, lufs_levels = renderer.next_alphas(t, n)
                 dt = time.perf_counter() - t0
 
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
                     print(f"🧠 Spectrogram batch {n}: {dt:.4f}s => {fps_prod:.1f} fps (producer)")
 
-                alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
+                alpha_out.put(
+                    AlphaBatch(
+                        start_frame=t,
+                        alphas=alphas,
+                        telemetry={"rms_db": rms_levels, "lufs_db": lufs_levels},
+                    )
+                )
                 t += n
 
             audio_in.task_done()
