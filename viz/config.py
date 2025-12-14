@@ -57,6 +57,14 @@ class ScrollConfig:
 
 
 @dataclass
+class SpectrogramConfig:
+    max_freq_hz: float = 20_000.0
+    scroll_px: int = 4
+    window_size: int = 2048
+    floor_db: float = -80.0
+
+
+@dataclass
 class AppConfig:
     verbose: bool = True
 
@@ -65,6 +73,7 @@ class AppConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
+    spectrogram: SpectrogramConfig = field(default_factory=SpectrogramConfig)
 
     @staticmethod
     def default() -> "AppConfig":
@@ -96,3 +105,7 @@ class AppConfig:
         assert 0.0 <= self.scroll.decay <= 1.0
         assert self.scroll.reveal_gain > 0.0
         assert self.scroll.gamma > 0.0
+        assert self.spectrogram.max_freq_hz > 0
+        assert self.spectrogram.scroll_px >= 1
+        assert self.spectrogram.scroll_px <= self.render.render_w
+        assert self.spectrogram.window_size > 0
