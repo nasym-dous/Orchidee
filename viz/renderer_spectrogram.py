@@ -79,18 +79,28 @@ class SpectrogramRenderer:
         if self.pre_emphasis > 0.0:
             self._apply_pre_emphasis()
 
-    def _slice_audio(self, start: int) -> np.ndarray:
+    def _slice_audio(self, start: int) -> tuple[np.ndarray, int]:
         end = start + self.window_size
         segment = self.segment_buf
         segment.fill(0.0)
         chunk = self.audio[start:end]
         segment[: chunk.shape[0]] = chunk
         np.multiply(segment, self.window[:, None], out=self.windowed_buf)
-        return self.windowed_buf
+        return self.windowed_buf, chunk.shape[0]
 
-    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         start_sample = frame_idx * self.spf
-        windowed = self._slice_audio(start_sample)
+        windowed, chunk_len = self._slice_audio(start_sample)
+
+        if chunk_len > 0:
+            segment = self.segment_buf[:chunk_len]
+        else:
+            segment = self.segment_buf[:1]
+
+        rms = np.sqrt(np.mean(np.square(segment), axis=0) + 1e-12)
+        amp_db = 20.0 * np.log10(rms)
+        amp_norm = (amp_db - self.floor_db) * (1.0 / self.norm_denom)
+        amp_norm = np.clip(amp_norm, 0.0, 1.0)
 
         spectrum = np.fft.rfft(windowed, n=self.fft_size, axis=0)[self.valid_bins]
         np.abs(spectrum, out=self.spectrum_buf)
@@ -119,14 +129,14 @@ class SpectrogramRenderer:
 
         col_l = np.tile(col_l[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
         col_r = np.tile(col_r[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
-        return col_l.astype(np.float32), col_r.astype(np.float32)
+        return col_l.astype(np.float32), col_r.astype(np.float32), amp_norm.astype(np.float32)
 
     def _render_frame(self, frame_idx: int) -> np.ndarray:
         self.heat *= float(self.cfg.scroll.decay)
         self.heat[:, :-self.scroll_px] = self.heat[:, self.scroll_px:]
         self.heat[:, -self.scroll_px:] = 0.0
 
-        col_l, col_r = self._compute_columns(frame_idx)
+        col_l, col_r, amp_norm = self._compute_columns(frame_idx)
 
         top = self.heat[: self.half_h]
         bottom = self.heat[self.half_h :]
@@ -138,7 +148,29 @@ class SpectrogramRenderer:
         gamma = float(self.cfg.scroll.gamma)
         alpha = 1.0 - np.exp(-self.heat * reveal_gain)
         alpha = np.clip(alpha ** gamma, 0.0, 1.0)
-        return (alpha * 255.0).astype(np.uint8)
+        alpha_u8 = (alpha * 255.0).astype(np.uint8)
+        return self._overlay_amplitude(alpha_u8, amp_norm)
+
+    def _overlay_amplitude(self, alpha: np.ndarray, amp_norm: np.ndarray) -> np.ndarray:
+        amp_w = min(max(int(self.w * 0.05), 1), self.w)
+        x0 = self.w - amp_w
+        amp_gain = float(self.cfg.scroll.gain)
+
+        amp_levels = np.clip(amp_norm * 255.0 * amp_gain, 0.0, 255.0).astype(np.uint8)
+
+        top_height = int(np.clip(np.round(amp_norm[0] * (self.half_h - 1)), 0, self.half_h - 1))
+        if top_height > 0:
+            alpha[self.half_h - top_height : self.half_h, x0:] = np.maximum(
+                alpha[self.half_h - top_height : self.half_h, x0:], amp_levels[0]
+            )
+
+        bottom_height = int(np.clip(np.round(amp_norm[1] * (self.half_h - 1)), 0, self.half_h - 1))
+        if bottom_height > 0:
+            alpha[self.half_h : self.half_h + bottom_height, x0:] = np.maximum(
+                alpha[self.half_h : self.half_h + bottom_height, x0:], amp_levels[1]
+            )
+
+        return alpha
 
     def _apply_pre_emphasis(self):
         coef = self.pre_emphasis
