@@ -3,6 +3,7 @@ from viz.diagnostics import print_env_diagnostics
 from viz.io_audio import load_audio_stereo_ffmpeg
 from viz.io_cover import load_cover_bgr
 from viz.renderer_scrolling import ScrollingRenderer
+from viz.renderer_spectrogram import SpectrogramRenderer
 from viz.compositor import compose_frame_from_alpha
 from viz.pipeline import run_pipeline
 from viz.encode import mux_audio
@@ -25,7 +26,10 @@ def main():
         cover = load_cover_bgr(cfg.video.w, cfg.video.h, cfg.paths.cover_path)
 
     with Timer("init renderer (JIT warmup)"):
-        renderer = ScrollingRenderer(audio, cfg)
+        if cfg.visual_mode == "spectrogram":
+            renderer = SpectrogramRenderer(audio, cfg)
+        else:
+            renderer = ScrollingRenderer(audio, cfg)
 
     with Timer("video render (AVI)"):
         out_avi = run_pipeline(

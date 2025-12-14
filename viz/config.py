@@ -57,6 +57,14 @@ class ScrollConfig:
 
 
 @dataclass
+class SpectrogramConfig:
+    n_fft: int = 1024
+    dynamic_range: float = 60.0  # dB window displayed
+    gamma: float = 0.6
+    gain: float = 1.0
+
+
+@dataclass
 class AppConfig:
     verbose: bool = True
 
@@ -65,6 +73,8 @@ class AppConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
+    spectrogram: SpectrogramConfig = field(default_factory=SpectrogramConfig)
+    visual_mode: str = "scroll"  # "scroll" ou "spectrogram"
 
     @staticmethod
     def default() -> "AppConfig":
@@ -96,3 +106,7 @@ class AppConfig:
         assert 0.0 <= self.scroll.decay <= 1.0
         assert self.scroll.reveal_gain > 0.0
         assert self.scroll.gamma > 0.0
+        assert self.spectrogram.n_fft >= 256
+        assert self.spectrogram.dynamic_range > 0.0
+        assert self.spectrogram.gamma > 0.0
+        assert self.visual_mode in {"scroll", "spectrogram"}
