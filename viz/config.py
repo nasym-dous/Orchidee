@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class PathConfig:
-    audio_path: str = "0340.mp3"
+    audio_path: str = "0481 v41B.mp3"
     cover_path: str = "cover.jpeg"
     out_avi: str = "out.avi"
     out_final: str = "out_with_audio.mp4"
@@ -18,16 +18,16 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 480
-    h: int = 480
+    w: int = 1440
+    h: int = 1440
     fps: int = 60
     fourcc: str = "MJPG"
 
 
 @dataclass
 class RenderConfig:
-    render_w: int = 480
-    render_h: int = 480
+    render_w: int = 1440
+    render_h: int = 1440
     batch: int = 8
     max_buffer_batches: int = 8
 
