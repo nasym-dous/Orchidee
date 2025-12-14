@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class PathConfig:
-    audio_path: str = "0481 v41B.mp3"
+    audio_path: str = "music.mp3"
     cover_path: str = "cover.jpeg"
     out_avi: str = "out.avi"
     out_final: str = "out_with_audio.mp4"
@@ -18,16 +18,16 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 1440
-    h: int = 1440
+    w: int = 360
+    h: int = 360
     fps: int = 60
     fourcc: str = "MJPG"
 
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1440
-    render_h: int = 1440
+    render_w: int = 360
+    render_h: int = 360
     batch: int = 8
     max_buffer_batches: int = 8
 
@@ -58,11 +58,12 @@ class ScrollConfig:
 
 @dataclass
 class SpectrogramConfig:
+    min_hz_bound: float = 20.0
     max_freq_hz: float = 24_000.0
     scroll_px: int = 4
     window_size: int = 2**14
     fft_size: int = 2**14
-    floor_db: float = -15.0
+    floor_db: float = -9.0
     ceiling_db: float = 0.0
     pre_emphasis: float = 0.99
     denoise_reduction_db: float = 0
@@ -110,6 +111,8 @@ class AppConfig:
         assert 0.0 <= self.scroll.decay <= 1.0
         assert self.scroll.reveal_gain > 0.0
         assert self.scroll.gamma > 0.0
+        assert self.spectrogram.min_hz_bound > 0
+        assert self.spectrogram.min_hz_bound < self.spectrogram.max_freq_hz
         assert self.spectrogram.max_freq_hz > 0
         assert self.spectrogram.scroll_px >= 1
         assert self.spectrogram.scroll_px <= self.render.render_w
