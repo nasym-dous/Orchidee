@@ -62,6 +62,29 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
     REVEAL_GAIN = float(cfg.scroll.reveal_gain)
     GAMMA = float(cfg.scroll.gamma)
 
+    y_axis = jnp.arange(RENDER_H, dtype=jnp.int32)
+
+    def connect_points(y_vals: jnp.ndarray, x_vals: jnp.ndarray, hits: jnp.ndarray):
+        if n_new < 2:
+            return hits
+
+        def body(i, acc):
+            y0 = y_vals[i]
+            y1 = y_vals[i + 1]
+            x0 = x_vals[i]
+            x1 = x_vals[i + 1]
+
+            ymin = jnp.minimum(y0, y1)
+            ymax = jnp.maximum(y0, y1)
+            mask = (y_axis >= ymin) & (y_axis <= ymax)
+            mask_f = mask.astype(acc.dtype)
+
+            acc = acc.at[:, x0].add(mask_f)
+            acc = acc.at[:, x1].add(mask_f)
+            return acc
+
+        return jax.lax.fori_loop(0, n_new - 1, body, hits)
+
     def init_heat():
         # heat full frame, mais on la manipule en 2 moitiés
         return jnp.zeros((RENDER_H, RENDER_W), jnp.float32)
@@ -107,8 +130,10 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
 
         # Gauche: on écrit sur le bord gauche
         hitsL = hitsL.at[yL, x_new_L].add(1.0)
+        hitsL = connect_points(yL, x_new_L, hitsL)
         # Droite: on écrit sur le bord droit du demi-écran
         hitsR = hitsR.at[yR, x_new_R].add(1.0)
+        hitsR = connect_points(yR, x_new_R, hitsR)
 
         # 7) épaissir via convolution (séparément)
         hitsL4 = hitsL[None, :, :, None]
