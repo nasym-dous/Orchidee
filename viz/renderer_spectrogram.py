@@ -86,9 +86,15 @@ class SpectrogramRenderer:
         np.log10(self.spectrum_buf, out=self.mag_db_buf)
         self.mag_db_buf *= 20.0
 
+        # Brightness should be relative to the loudest frequency in the window,
+        # so shift magnitudes such that the peak maps to the configured ceiling.
+        loudest_db = np.max(self.mag_db_buf, axis=0, keepdims=True)
+        shift = self.ceiling_db - loudest_db
+        np.add(self.mag_db_buf, shift, out=self.mag_db_buf)
+
+        np.clip(self.mag_db_buf, self.floor_db, self.ceiling_db, out=self.mag_db_buf)
         np.subtract(self.mag_db_buf, self.floor_db, out=self.norm_buf)
         self.norm_buf *= 1.0 / self.norm_denom
-        np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
         col_l = np.interp(
             self.log_freq_axis, self.log_freqs, self.norm_buf[:, 0], left=0.0, right=0.0
