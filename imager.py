@@ -304,29 +304,49 @@ class ImagerRenderer:
 
 
 # ======================
-# Compose 4K frame on CPU (fast-ish)
+# Compose 4K frame on CPU (faster with re-used buffers)
 # - glow is done in LOW-RES before upscale (cheap)
+# - avoids per-frame allocations by re-using scratch buffers
 # ======================
-def compose_frame_from_alpha(cover_bgr_u8: np.ndarray, alpha_u8_small: np.ndarray) -> np.ndarray:
-    # glow in low-res (avoid 4K blur!)
-    if GLOW_SIGMA and GLOW_SIGMA > 0:
-        alpha_u8_small = cv2.GaussianBlur(
-            alpha_u8_small, (0, 0),
-            sigmaX=float(GLOW_SIGMA), sigmaY=float(GLOW_SIGMA)
+class FrameComposer:
+    def __init__(self, cover_bgr_u8: np.ndarray):
+        self.cover_u16 = cover_bgr_u8.astype(np.uint16)
+
+        self.alpha_low = np.empty((RENDER_H, RENDER_W), dtype=np.uint8)
+        self.alpha_resized = np.empty((W, H), dtype=np.uint8)
+        self.alpha_blended = np.empty((W, H), dtype=np.uint8)
+        self.alpha_blended_u16 = np.empty((W, H), dtype=np.uint16)
+        self.frame_u16 = np.empty_like(self.cover_u16)
+        self.frame_u8 = np.empty_like(cover_bgr_u8)
+
+        baseline_u8 = int(BASELINE * 255)
+        lut = np.arange(256, dtype=np.uint16)
+        self.alpha_lut = (baseline_u8 + ((lut * (255 - baseline_u8)) >> 8)).astype(np.uint8)
+
+    def compose(self, alpha_u8_small: np.ndarray) -> np.ndarray:
+        if GLOW_SIGMA and GLOW_SIGMA > 0:
+            cv2.GaussianBlur(
+                alpha_u8_small, (0, 0),
+                sigmaX=float(GLOW_SIGMA), sigmaY=float(GLOW_SIGMA),
+                dst=self.alpha_low
+            )
+            alpha_processed = self.alpha_low
+        else:
+            alpha_processed = alpha_u8_small
+
+        cv2.resize(alpha_processed, (W, H), dst=self.alpha_resized, interpolation=cv2.INTER_LINEAR)
+
+        cv2.LUT(self.alpha_resized, self.alpha_lut, dst=self.alpha_blended)
+        self.alpha_blended_u16[...] = self.alpha_blended
+
+        cv2.multiply(
+            self.cover_u16,
+            self.alpha_blended_u16[..., None],
+            dst=self.frame_u16,
+            scale=1.0 / 255.0,
         )
 
-    # upscale alpha once
-    alpha_u8 = cv2.resize(alpha_u8_small, (W, H), interpolation=cv2.INTER_LINEAR)
-
-    # fast baseline blend in integer domain
-    baseline_u8 = int(BASELINE * 255)
-    a16 = alpha_u8.astype(np.uint16)
-    alpha2_u8 = baseline_u8 + ((a16 * (255 - baseline_u8)) >> 8)
-    alpha2_u8 = alpha2_u8.astype(np.uint8)
-
-    # cover * alpha2 / 255 (uint8 math)
-    frame = (cover_bgr_u8.astype(np.uint16) * alpha2_u8[..., None].astype(np.uint16) // 255).astype(np.uint8)
-    return frame
+        return cv2.convertScaleAbs(self.frame_u16, dst=self.frame_u8)
 
 
 # ======================
@@ -392,6 +412,7 @@ def main():
         q.put(STOP)
 
     def consumer():
+        composer = FrameComposer(cover)
         out = cv2.VideoWriter(OUT_AVI, cv2.VideoWriter_fourcc(*"MJPG"), FPS, (W, H))
         if not out.isOpened():
             raise RuntimeError("VideoWriter non ouvert")
@@ -405,7 +426,7 @@ def main():
                 break
 
             for alpha_small in item:
-                frame = compose_frame_from_alpha(cover, alpha_small)
+                frame = composer.compose(alpha_small)
                 out.write(frame)
                 written += 1
                 fps_counter["frames"] += 1
