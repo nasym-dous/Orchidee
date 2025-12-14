@@ -1,0 +1,5 @@
+/.venv312
+/viz/__pycache__
+*.mp4
+*.avi
+*.mp3
