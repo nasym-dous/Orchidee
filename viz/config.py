@@ -6,7 +6,7 @@ import os
 class PathConfig:
     audio_path: str = "music.mp3"
     cover_path: str = "cover.jpeg"
-    out_avi: str = "out.avi"
+    out_video: str = "out_video.mp4"
     out_final: str = "out_with_audio.mp4"
 
 
@@ -21,7 +21,10 @@ class VideoConfig:
     w: int = 1920//2
     h: int = 1080//2
     fps: int = 60
-    fourcc: str = "MJPG"
+    # Prefer hardware-accelerated H.264 on Apple Silicon when available,
+    # while keeping a fallback list of codecs for portability.
+    fourcc: str = "avc1"
+    container: str = "mp4"
 
 
 @dataclass
