@@ -60,10 +60,12 @@ class ScrollConfig:
 class SpectrogramConfig:
     max_freq_hz: float = 24_000.0
     scroll_px: int = 4
-    window_size: int = 16384
-    fft_size: int = 16384
+    window_size: int = 2**14
+    fft_size: int = 2**14
     floor_db: float = -15.0
     ceiling_db: float = 0.0
+    pre_emphasis: float = 0.99
+    denoise_reduction_db: float = 0
 
 
 @dataclass
@@ -114,3 +116,5 @@ class AppConfig:
         assert self.spectrogram.window_size > 0
         assert self.spectrogram.fft_size >= self.spectrogram.window_size
         assert self.spectrogram.floor_db < self.spectrogram.ceiling_db
+        assert 0.0 <= self.spectrogram.pre_emphasis < 1.0
+        assert self.spectrogram.denoise_reduction_db >= 0.0
