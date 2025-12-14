@@ -82,7 +82,7 @@ def format_batch_telemetry(stage: str, start_frame: int, batch_len: int, batch_b
     queued_mb = queue_buffer_mb(q, batch_bytes)
     batch_mb = bytes_mb(batch_bytes)
     return (
-        f"{stage} start={start_frame} n={batch_len} "
-        f"batch≈{batch_mb:.2f} MB queued≈{q.qsize()} ({queued_mb:.2f} MB) "
-        f"rate≈{fps:.1f} fps"
+        f"{stage:<24} \tstart = {start_frame:<6} n = {batch_len}, "
+        f"batch ≈ {batch_mb:.2f} MB, queued ≈ {q.qsize()} ({queued_mb:.2f} MB), "
+        f"\trate ≈ {fps:.1f} fps"
     )
