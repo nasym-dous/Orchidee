@@ -64,6 +64,8 @@ class SpectrogramConfig:
     fft_size: int = 64
     floor_db: float = -80.0
     ceiling_db: float = 0.0
+    pre_emphasis: float = 0.0
+    denoise_reduction_db: float = 0.0
 
 
 @dataclass
@@ -114,3 +116,5 @@ class AppConfig:
         assert self.spectrogram.window_size > 0
         assert self.spectrogram.fft_size >= self.spectrogram.window_size
         assert self.spectrogram.floor_db < self.spectrogram.ceiling_db
+        assert 0.0 <= self.spectrogram.pre_emphasis < 1.0
+        assert self.spectrogram.denoise_reduction_db >= 0.0
