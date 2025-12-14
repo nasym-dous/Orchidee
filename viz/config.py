@@ -58,6 +58,7 @@ class ScrollConfig:
 
 @dataclass
 class SpectrogramConfig:
+    min_hz_bound: float = 20.0
     max_freq_hz: float = 24_000.0
     scroll_px: int = 4
     window_size: int = 2**14
@@ -110,6 +111,8 @@ class AppConfig:
         assert 0.0 <= self.scroll.decay <= 1.0
         assert self.scroll.reveal_gain > 0.0
         assert self.scroll.gamma > 0.0
+        assert self.spectrogram.min_hz_bound > 0
+        assert self.spectrogram.min_hz_bound < self.spectrogram.max_freq_hz
         assert self.spectrogram.max_freq_hz > 0
         assert self.spectrogram.scroll_px >= 1
         assert self.spectrogram.scroll_px <= self.render.render_w

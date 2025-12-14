@@ -12,6 +12,7 @@ class SpectrogramRenderer:
         self.audio = audio_np.astype(np.float32)
         self.window_size = int(cfg.spectrogram.window_size)
         self.fft_size = int(cfg.spectrogram.fft_size)
+        self.min_freq = float(cfg.spectrogram.min_hz_bound)
         self.max_freq = float(cfg.spectrogram.max_freq_hz)
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
         self.pre_emphasis = float(cfg.spectrogram.pre_emphasis)
@@ -24,11 +25,13 @@ class SpectrogramRenderer:
         self.n_frames = int(np.ceil(self.audio.shape[0] / self.spf))
 
         self.freqs = np.fft.rfftfreq(self.fft_size, d=1.0 / cfg.audio.target_sr)
-        valid = self.freqs <= self.max_freq
+        valid = (self.freqs >= self.min_freq) & (self.freqs <= self.max_freq)
         self.freqs = self.freqs[valid]
         self.valid_bins = valid
         if self.freqs.size == 0:
-            raise ValueError("No frequency bins available below max_freq_hz")
+            raise ValueError(
+                f"No frequency bins available between {self.min_freq}Hz and {self.max_freq}Hz"
+            )
 
         positive_freqs = self.freqs[self.freqs > 0]
         if positive_freqs.size == 0:
@@ -39,7 +42,7 @@ class SpectrogramRenderer:
             self.freqs = self.freqs.copy()
             self.freqs[0] = float(positive_freqs.min())
 
-        self.min_freq = float(positive_freqs.min())
+        self.min_freq = float(max(self.min_freq, positive_freqs.min()))
         self.log_freqs = np.log10(self.freqs)
 
         self.h = cfg.render.render_h
@@ -66,6 +69,7 @@ class SpectrogramRenderer:
             print(f"  window_size    : {self.window_size}")
             print(f"  scroll_px      : {self.scroll_px}")
             print(f"  fft_size       : {self.fft_size}")
+            print(f"  min_freq_hz    : {self.min_freq}")
             print(f"  max_freq_hz    : {self.max_freq}")
             if self.pre_emphasis > 0.0:
                 print(f"  pre_emphasis   : {self.pre_emphasis}")
