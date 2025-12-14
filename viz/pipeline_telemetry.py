@@ -21,7 +21,7 @@ def _dbfs(values: np.ndarray) -> np.ndarray:
     return 20.0 * np.log10(values + 1e-12)
 
 
-def _db_to_level(db: float, floor: float = -60.0, ceiling: float = 0.0) -> float:
+def _db_to_level(db: float, floor: float = -30.0, ceiling: float = 0.0) -> float:
     return float(np.clip((db - floor) / (ceiling - floor), 0.0, 1.0))
 
 
@@ -55,9 +55,9 @@ def _draw_meter_channel(area: np.ndarray, values: _MeterValues, channel_idx: int
     area[:] = 0
 
     levels = [
-        (_db_to_level(values.lufs[channel_idx]), 80),
+        (_db_to_level(values.true_peak[channel_idx]), 80),
         (_db_to_level(values.rms[channel_idx]), 160),
-        (_db_to_level(values.true_peak[channel_idx]), 240),
+        (_db_to_level(values.lufs[channel_idx]), 240),
     ]
 
     for level, intensity in levels:
@@ -71,8 +71,7 @@ def _draw_meter_channel(area: np.ndarray, values: _MeterValues, channel_idx: int
 def _draw_meters(alpha: np.ndarray, values: _MeterValues) -> np.ndarray:
     canvas = alpha.copy()
     h, w = canvas.shape
-    meter_w = max(48, int(w * 0.06))
-    meter_w = min(meter_w, w)
+    meter_w = w//16
 
     # left-side blackout for meters
     canvas[:, :meter_w] = 0
@@ -86,18 +85,18 @@ def _draw_meters(alpha: np.ndarray, values: _MeterValues) -> np.ndarray:
 
     # info box in top-left corner
     box_h = min(72, h)
-    box_w = min(int(w * 0.35), w)
-    canvas[:box_h, :box_w] = 0
+    box_w = min(int(w * 0.15), w)
+    canvas[:box_h, meter_w:box_w+meter_w] = 0
 
     lines = [
-        f"LUFS L {values.lufs[0]:5.1f} | R {values.lufs[1]:5.1f}",
-        f"RMS  L {values.rms[0]:5.1f} | R {values.rms[1]:5.1f}",
-        f"TP   L {values.true_peak[0]:5.1f} | R {values.true_peak[1]:5.1f}",
+        f"LUFS ({values.lufs[0]:2.1f}, {values.lufs[1]:2.1f})",
+        f"RMS  ({values.rms[0]:2.1f}, {values.rms[1]:2.1f})",
+        f"TP   ({values.true_peak[0]:2.1f}, {values.true_peak[1]:2.1f})",
     ]
 
     for i, text in enumerate(lines):
         y = 20 + i * 18
-        cv2.putText(canvas, text, (6, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 200, thickness=1, lineType=cv2.LINE_AA)
+        cv2.putText(canvas, text, (6+meter_w, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 200, thickness=2, lineType=cv2.LINE_AA)
 
     return canvas
 
