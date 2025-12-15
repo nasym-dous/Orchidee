@@ -181,7 +181,6 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
         gain,
     )
 
-    @jax.jit(backend=jit_backend)
     def render_one(frame_idx: jnp.ndarray, heat: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         heat = heat * decay
         heat = jnp.concatenate(
@@ -203,7 +202,8 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
         alpha_u8 = (alpha * 255.0).astype(jnp.uint8)
         return heat, alpha_u8
 
-    @jax.jit(backend=jit_backend)
+    render_one = jax.jit(render_one, backend=jit_backend)
+
     def make_batch(t0: jnp.ndarray, heat: jnp.ndarray):
         def step(carry, i):
             h, _ = carry
@@ -214,6 +214,8 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
             step, (heat, jnp.zeros(heat_shape, dtype=jnp.uint8)), jnp.arange(cfg.render.batch)
         )
         return alphas, heat
+
+    make_batch = jax.jit(make_batch, backend=jit_backend)
 
     return heat_zero, make_batch, int(np.ceil(audio_np.shape[0] / spf))
 
