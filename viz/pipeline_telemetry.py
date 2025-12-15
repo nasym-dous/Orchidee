@@ -83,20 +83,14 @@ def _draw_meters(alpha: np.ndarray, values: _MeterValues) -> np.ndarray:
     _draw_meter_channel(top, values, 0)
     _draw_meter_channel(bottom, values, 1)
 
-    # info box in top-left corner
-    box_h = min(72, h)
-    box_w = min(int(w * 0.15), w)
-    canvas[:box_h, meter_w:box_w+meter_w] = 0
-
     lines = [
         f"LUFS ({values.lufs[0]:2.1f}, {values.lufs[1]:2.1f})",
-        f"RMS  ({values.rms[0]:2.1f}, {values.rms[1]:2.1f})",
-        f"TP   ({values.true_peak[0]:2.1f}, {values.true_peak[1]:2.1f})",
+        f"True Peaks ({values.true_peak[0]:2.1f}, {values.true_peak[1]:2.1f})",
     ]
 
     for i, text in enumerate(lines):
         y = 20 + i * 18
-        cv2.putText(canvas, text, (6+meter_w, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 200, thickness=2, lineType=cv2.LINE_AA)
+        cv2.putText(canvas, text, (6+meter_w, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 256, thickness=1, lineType=cv2.LINE_AA)
 
     return canvas
 
