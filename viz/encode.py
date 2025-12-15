@@ -16,5 +16,5 @@ def mux_audio(in_avi: str, audio_path: str, out_mp4: str, verbose: bool, encode:
         "-b:a", encode.audio_bitrate,
         "-shortest",
         out_mp4
-    ])
+    ]
     subprocess.run(cmd, check=True)

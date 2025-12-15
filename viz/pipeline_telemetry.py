@@ -71,7 +71,7 @@ def _draw_meter_channel(area: np.ndarray, values: _MeterValues, channel_idx: int
 def _draw_meters(alpha: np.ndarray, values: _MeterValues) -> np.ndarray:
     canvas = alpha.copy()
     h, w = canvas.shape
-    meter_w = w//16
+    meter_w = w//24
 
     # left-side blackout for meters
     canvas[:, :meter_w] = 0

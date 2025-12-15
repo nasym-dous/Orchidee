@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class PathConfig:
-    audio_path: str = "music.mp3"
+    audio_path: str = "Voyager.flac"
     cover_path: str = "cover.jpeg"
     out_avi: str = "out.avi"
     out_final: str = "out_with_audio.mp4"
@@ -13,7 +13,7 @@ class PathConfig:
 @dataclass
 class AudioConfig:
     audio_path: str = "music.mp3"
-    target_sr: int = 48000
+    target_sr: int = 44100
     clip_audio: bool = False
     clip_seconds: int = 10
 
@@ -69,10 +69,10 @@ class ScrollConfig:
 @dataclass
 class SpectrogramConfig:
     min_hz_bound: float = 30.0
-    max_freq_hz: float = 16_000.0
+    max_freq_hz: float = 10_000.0
     scroll_px: int = 8
-    window_size: int = 2**14
-    fft_size: int = 2**14
+    window_size: int = 2**12
+    fft_size: int = 2**12
     floor_db: float = -80
     ceiling_db: float = 0.0
     pre_emphasis: float = 0
