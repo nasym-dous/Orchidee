@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class PathConfig:
-    audio_path: str = "0340.mp3"
+    audio_path: str = "0481 v41B.mp3"
     cover_path: str = "cover.jpeg"
     out_avi: str = "out.avi"
     out_final: str = "out_with_audio.mp4"
@@ -12,8 +12,8 @@ class PathConfig:
 
 @dataclass
 class AudioConfig:
-    target_sr: int = 44100
-    clip_audio: bool = True
+    target_sr: int = 48000
+    clip_audio: bool = False
     clip_seconds: int = 10
 
 
@@ -35,22 +35,25 @@ class EncodeConfig:
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1080
-    render_h: int = 1080
+    render_w: int = 1080*2
+    render_h: int = 1080*2
     batch: int = 8
     max_buffer_batches: int = 8
 
     # low-res alpha look
     baseline: float = 0.12
-    glow_sigma: float = 1.0
+    glow_sigma: float = 0.0
     draw_center_lines: bool = False
 
 
 @dataclass
 class ScrollConfig:
     seconds_to_center: float = 0.2
-    # pixels per frame to scroll left (and number of new columns written at right)
+    # pixels per frame to scroll content toward the center
     scroll_px: int = 6
+
+    # number of freshly written columns per frame (decoupled from scroll speed)
+    write_px: int = 2
 
     # thickness is conv kernel radius
     line_thickness: int = 1
@@ -69,7 +72,8 @@ class ScrollConfig:
 class SpectrogramConfig:
     min_hz_bound: float = 2**5
     max_freq_hz: float = 2**13
-    scroll_px: int = 8
+    scroll_px: int = 4
+    write_px: int = 4
     window_size: int = 2**13
     fft_size: int = 2**13
     floor_db: float = -80
@@ -123,6 +127,8 @@ class AppConfig:
             assert self.audio.clip_seconds > 0
         assert self.scroll.seconds_to_center >= 0.1
         assert self.scroll.scroll_px >= 1
+        assert self.scroll.write_px >= 1
+        assert self.scroll.write_px <= (self.render.render_w // 2)
         assert self.scroll.line_thickness >= 0
         assert 0.0 <= self.render.baseline <= 0.4
         assert 0.0 <= self.scroll.decay <= 1.0
@@ -132,6 +138,8 @@ class AppConfig:
         assert self.spectrogram.min_hz_bound < self.spectrogram.max_freq_hz
         assert self.spectrogram.max_freq_hz > 0
         assert self.spectrogram.scroll_px >= 1
+        assert self.spectrogram.write_px >= 1
+        assert self.spectrogram.write_px <= self.spectrogram.scroll_px
         assert self.spectrogram.scroll_px <= self.render.render_w
         assert self.spectrogram.window_size > 0
         assert self.spectrogram.fft_size >= self.spectrogram.window_size
