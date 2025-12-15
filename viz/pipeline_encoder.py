@@ -52,6 +52,29 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
         total_frames = None
         progress_width = 28
         last_progress = 0.0
+        progress_line_open = False
+
+        def print_progress():
+            nonlocal last_progress, progress_line_open
+            if not cfg.verbose or not total_frames:
+                return
+
+            now = time.perf_counter()
+            if now - last_progress < 0.25 and written != total_frames:
+                return
+
+            elapsed = now - perf.t0
+            pct = min(written / max(total_frames, 1), 1.0)
+            filled = int(progress_width * pct)
+            bar = "#" * filled + "-" * (progress_width - filled)
+            avg_fps = perf.frames / max(elapsed, 1e-6)
+            stats = (
+                f"{pct*100:5.1f}% | frames {written}/{total_frames}"
+                f" | avg {avg_fps:5.1f} fps | RAM ≈ {ram_mb():.0f} MB"
+            )
+            print(f"\r🚀 Rendering |{bar}| {stats}", end="", flush=True)
+            last_progress = now
+            progress_line_open = True
 
         while True:
             item = frames_in.get()
@@ -68,25 +91,15 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                 written += 1
                 perf.tick(1)
 
-                if cfg.verbose and total_frames:
-                    now = time.perf_counter()
-                    if now - last_progress >= 0.25 or written == total_frames:
-                        elapsed = now - perf.t0
-                        pct = min(written / max(total_frames, 1), 1.0)
-                        filled = int(progress_width * pct)
-                        bar = "#" * filled + "-" * (progress_width - filled)
-                        avg_fps = perf.frames / max(elapsed, 1e-6)
-                        stats = (
-                            f"{pct*100:5.1f}% | frames {written}/{total_frames}"
-                            f" | avg {avg_fps:5.1f} fps | RAM ≈ {ram_mb():.0f} MB"
-                        )
-                        print(f"\r🚀 Rendering |{bar}| {stats}", end="", flush=True)
-                        last_progress = now
+                print_progress()
 
             frames_in.task_done()
             if cfg.verbose and (
                 batch.start_frame == 0 or batch.start_frame % (cfg.video.fps * 5) == 0
             ):
+                if progress_line_open:
+                    print()
+                    progress_line_open = False
                 dt_batch = time.perf_counter() - t_batch0
                 if dt_batch > 0:
                     fps = len(batch.frames) / dt_batch
@@ -110,6 +123,8 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
 
         if cfg.verbose:
             if total_frames:
+                if progress_line_open:
+                    print()
                 pct = min(perf.frames / max(total_frames, 1), 1.0)
                 bar = "#" * progress_width
                 stats = (
