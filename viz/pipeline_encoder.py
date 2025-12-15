@@ -49,6 +49,9 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
         perf = PerfCounter()
         perf.start()
         written = 0
+        total_frames = None
+        progress_width = 28
+        last_progress = 0.0
 
         while True:
             item = frames_in.get()
@@ -57,25 +60,28 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                 break
 
             batch: FrameBatch = item
+            if total_frames is None:
+                total_frames = batch.total_frames
             t_batch0 = time.perf_counter()
             for frame in batch.frames:
                 proc.stdin.write(frame.tobytes())
                 written += 1
                 perf.tick(1)
 
-                if cfg.verbose and written % (cfg.video.fps * 5) == 0:
-                    avg_fps = perf.frames / max(time.perf_counter() - perf.t0, 1e-6)
-                    batch_bytes = sum(frame.nbytes for frame in batch.frames)
-                    frame_mb = batch_memory_mb(batch.frames)
-                    telemetry = format_batch_telemetry(
-                        "📼 Encoder (consumer)",
-                        batch.start_frame,
-                        len(batch.frames),
-                        batch_bytes,
-                        frames_in,
-                        avg_fps,
-                    )
-                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB")
+                if cfg.verbose and total_frames:
+                    now = time.perf_counter()
+                    if now - last_progress >= 0.25 or written == total_frames:
+                        elapsed = now - perf.t0
+                        pct = min(written / max(total_frames, 1), 1.0)
+                        filled = int(progress_width * pct)
+                        bar = "#" * filled + "-" * (progress_width - filled)
+                        avg_fps = perf.frames / max(elapsed, 1e-6)
+                        stats = (
+                            f"{pct*100:5.1f}% | frames {written}/{total_frames}"
+                            f" | avg {avg_fps:5.1f} fps | RAM ≈ {ram_mb():.0f} MB"
+                        )
+                        print(f"\r🚀 Rendering |{bar}| {stats}", end="", flush=True)
+                        last_progress = now
 
             frames_in.task_done()
             if cfg.verbose and (
@@ -103,10 +109,16 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
         perf.stop()
 
         if cfg.verbose:
-            print("🚀 Render performance")
-            print(f"  frames rendered : {perf.frames}")
-            print(f"  avg FPS         : {perf.avg_fps():.2f}")
-            print(f"  RAM (now)       : {ram_mb():.0f} MB")
+            if total_frames:
+                pct = min(perf.frames / max(total_frames, 1), 1.0)
+                bar = "#" * progress_width
+                stats = (
+                    f"100.0% | frames {perf.frames}/{total_frames}"
+                    f" | avg {perf.avg_fps():5.1f} fps | RAM ≈ {ram_mb():.0f} MB"
+                )
+                print(f"\r🚀 Rendering |{bar}| {stats}")
+            else:
+                print("\n🚀 Rendering complete")
             print(f"✅ Vidéo ffmpeg terminée : {cfg.paths.out_video}")
 
         mux_audio(

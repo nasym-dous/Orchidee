@@ -45,7 +45,13 @@ def start_compositor_filter(
                 )
                 frame_mb = batch_memory_mb(frames)
                 print(f"{telemetry} | output_batch≈{frame_mb:.2f} MB")
-            frame_out.put(FrameBatch(start_frame=alpha_batch.start_frame, frames=frames))
+            frame_out.put(
+                FrameBatch(
+                    start_frame=alpha_batch.start_frame,
+                    frames=frames,
+                    total_frames=alpha_batch.total_frames,
+                )
+            )
             alpha_in.task_done()
 
     t = threading.Thread(target=_run, name="compositor_filter", daemon=True)

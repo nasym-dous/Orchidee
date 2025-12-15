@@ -17,6 +17,7 @@ class AlphaBatch:
 
     start_frame: int
     alphas: np.ndarray
+    total_frames: int | None = None
 
 
 @dataclass
@@ -25,3 +26,4 @@ class FrameBatch:
 
     start_frame: int
     frames: List[np.ndarray]
+    total_frames: int | None = None

@@ -131,7 +131,13 @@ def start_telemetry_filter(
                 meter_idx = min(frame_idx, len(meter_series) - 1)
                 overlays.append(_draw_meters(alpha, meter_series[meter_idx]))
 
-            alpha_out.put(AlphaBatch(start_frame=alpha_batch.start_frame, alphas=np.stack(overlays, axis=0)))
+            alpha_out.put(
+                AlphaBatch(
+                    start_frame=alpha_batch.start_frame,
+                    alphas=np.stack(overlays, axis=0),
+                    total_frames=alpha_batch.total_frames,
+                )
+            )
             alpha_in.task_done()
 
     t = threading.Thread(target=_run, name="telemetry_filter", daemon=True)

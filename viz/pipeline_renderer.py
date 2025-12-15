@@ -38,7 +38,9 @@ def start_renderer_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, sto
                         )
                     )
 
-                alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
+                alpha_out.put(
+                    AlphaBatch(start_frame=t, alphas=alphas, total_frames=renderer.n_frames)
+                )
                 t += n
 
             audio_in.task_done()
@@ -78,7 +80,9 @@ def start_spectrogram_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, 
                         )
                     )
 
-                alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
+                alpha_out.put(
+                    AlphaBatch(start_frame=t, alphas=alphas, total_frames=renderer.n_frames)
+                )
                 t += n
 
             audio_in.task_done()
