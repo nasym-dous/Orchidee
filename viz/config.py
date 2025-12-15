@@ -13,13 +13,13 @@ class PathConfig:
 @dataclass
 class AudioConfig:
     target_sr: int = 48000
-    clip_audio: bool = False
+    clip_audio: bool = True
     clip_seconds: int = 30
 
 
 @dataclass
 class VideoConfig:
-    w: int = 1920
+    w: int = 1080
     h: int = 1080
     fps: int = 60
     fourcc: str = "MJPG"
@@ -36,7 +36,7 @@ class EncodeConfig:
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1920
+    render_w: int = 1080
     render_h: int = 1080
     batch: int = 8
     max_buffer_batches: int = 8
@@ -71,9 +71,9 @@ class ScrollConfig:
 
 @dataclass
 class SpectrogramConfig:
-    min_hz_bound: float = 2**5
+    min_hz_bound: float = 2**6
     max_freq_hz: float = 2**13
-    scroll_px: int = 16
+    scroll_px: int = 32
     write_px: int = 1
     window_size: int = 2**13
     fft_size: int = 2**13
