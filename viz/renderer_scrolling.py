@@ -23,33 +23,35 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
 
     # pixels/frame calculé depuis un objectif en secondes
     scroll_px = halfW / (cfg.scroll.seconds_to_center * fps)
-    n_new = max(1, int(round(scroll_px)))
+    shift_px = max(1, int(round(scroll_px)))
+    write_px = max(1, int(cfg.scroll.write_px))
 
     # safety
-    n_new = min(n_new, halfW)
+    shift_px = min(shift_px, halfW)
+    write_px = min(write_px, shift_px)
 
     if cfg.verbose:
         print(
-            f"🧭 seconds_to_center={cfg.scroll.seconds_to_center:.2f}s -> scroll_px≈{scroll_px:.2f} => n_new={n_new}px/frame")
+            f"🧭 seconds_to_center={cfg.scroll.seconds_to_center:.2f}s -> scroll_px≈{scroll_px:.2f} => shift_px={shift_px}px/frame, write_px={write_px}px/frame")
 
-    if n_new < 1:
+    if shift_px < 1:
         raise ValueError("scroll_px doit être >= 1")
 
     RENDER_W = cfg.render.render_w
     RENDER_H = cfg.render.render_h
     halfW = RENDER_W // 2
 
-    if n_new > halfW:
+    if shift_px > halfW:
         raise ValueError("scroll_px trop grand: doit être <= render_w/2")
 
     # sample indices dans la fenêtre audio de la frame
-    samp_idx = jnp.linspace(0, spf - 1, n_new).astype(jnp.int32)
+    samp_idx = jnp.linspace(0, spf - 1, write_px).astype(jnp.int32)
 
     # positions X locales (dans chaque demi-écran)
-    # gauche: nouvelles colonnes à x=0..n_new-1
-    x_new_L = jnp.arange(0, n_new, dtype=jnp.int32)
+    # gauche: nouvelles colonnes à x=0..write_px-1
+    x_new_L = jnp.arange(0, write_px, dtype=jnp.int32)
     # droite: nouvelles colonnes à la fin du demi-écran
-    x_new_R = jnp.arange(halfW - n_new, halfW, dtype=jnp.int32)
+    x_new_R = jnp.arange(halfW - write_px, halfW, dtype=jnp.int32)
 
     # conv kernel HWIO
     disk = make_disk_kernel(cfg.scroll.line_thickness)
@@ -65,7 +67,7 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
     y_axis = jnp.arange(RENDER_H, dtype=jnp.int32)
 
     def connect_points(y_vals: jnp.ndarray, x_vals: jnp.ndarray, hits: jnp.ndarray):
-        if n_new < 2:
+        if write_px < 2:
             return hits
 
         def body(i, acc):
@@ -83,7 +85,7 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
             acc = acc.at[:, x1].add(mask_f)
             return acc
 
-        return jax.lax.fori_loop(0, n_new - 1, body, hits)
+        return jax.lax.fori_loop(0, write_px - 1, body, hits)
 
     def init_heat():
         # heat full frame, mais on la manipule en 2 moitiés
@@ -101,19 +103,19 @@ def build_renderer_scrolling_alpha(audio_lr, cfg: AppConfig):
         # 3) scrolling vers le centre
         # Gauche: shift RIGHT => on pousse l'historique vers le centre
         heatL = jnp.concatenate(
-            [jnp.zeros((RENDER_H, n_new), dtype=heatL.dtype), heatL[:, :-n_new]],
+            [jnp.zeros((RENDER_H, shift_px), dtype=heatL.dtype), heatL[:, :-shift_px]],
             axis=1
         )
         # Droite: shift LEFT => on pousse l'historique vers le centre
         heatR = jnp.concatenate(
-            [heatR[:, n_new:], jnp.zeros((RENDER_H, n_new), dtype=heatR.dtype)],
+            [heatR[:, shift_px:], jnp.zeros((RENDER_H, shift_px), dtype=heatR.dtype)],
             axis=1
         )
 
         # 4) sample audio
         start = jnp.clip(frame_idx * spf, 0, n_samples - 1)
         ids = jnp.clip(start + samp_idx, 0, n_samples - 1)
-        lr = audio_lr[ids]  # (n_new, 2)
+        lr = audio_lr[ids]  # (write_px, 2)
 
         L = lr[:, 0] * GAIN
         R = lr[:, 1] * GAIN
@@ -184,11 +186,18 @@ class ScrollingRenderer:
         self.n_frames = int(np.ceil(audio_np.shape[0] / self.spf))
 
         if cfg.verbose:
+            halfW = cfg.render.render_w // 2
+            fps = cfg.video.fps
+            scroll_px = halfW / (cfg.scroll.seconds_to_center * fps)
+            shift_px = min(max(1, int(round(scroll_px))), halfW)
+            write_px = min(max(1, int(cfg.scroll.write_px)), shift_px)
+
             print("🎛 Renderer config")
             print(f"  frames         : {self.n_frames}")
             print(f"  spf            : {self.spf}")
             print(f"  alpha internal : {cfg.render.render_w}x{cfg.render.render_h}")
-            print(f"  scroll_px      : {cfg.scroll.scroll_px}")
+            print(f"  shift_px       : {shift_px}")
+            print(f"  write_px       : {write_px}")
 
         self.init_heat, self.make_batch = build_renderer_scrolling_alpha(self.audio, cfg)
         self.heat = self.init_heat()

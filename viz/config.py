@@ -49,8 +49,11 @@ class RenderConfig:
 @dataclass
 class ScrollConfig:
     seconds_to_center: float = 0.2
-    # pixels per frame to scroll left (and number of new columns written at right)
+    # pixels per frame to scroll content toward the center
     scroll_px: int = 6
+
+    # number of freshly written columns per frame (decoupled from scroll speed)
+    write_px: int = 2
 
     # thickness is conv kernel radius
     line_thickness: int = 1
@@ -123,6 +126,8 @@ class AppConfig:
             assert self.audio.clip_seconds > 0
         assert self.scroll.seconds_to_center >= 0.1
         assert self.scroll.scroll_px >= 1
+        assert self.scroll.write_px >= 1
+        assert self.scroll.write_px <= (self.render.render_w // 2)
         assert self.scroll.line_thickness >= 0
         assert 0.0 <= self.render.baseline <= 0.4
         assert 0.0 <= self.scroll.decay <= 1.0
