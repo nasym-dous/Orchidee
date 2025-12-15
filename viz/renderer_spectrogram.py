@@ -17,6 +17,7 @@ class SpectrogramRenderer:
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
         self.pre_emphasis = float(cfg.spectrogram.pre_emphasis)
         self.denoise_reduction_db = float(cfg.spectrogram.denoise_reduction_db)
+        self.tilt_db_per_octave = float(cfg.spectrogram.tilt_db_per_octave)
         self.window = _prepare_window(self.window_size)
         self.windowed_buf = np.zeros((self.window_size, 2), dtype=np.float32)
         self.segment_buf = np.zeros((self.window_size, 2), dtype=np.float32)
@@ -52,6 +53,10 @@ class SpectrogramRenderer:
             np.log10(self.min_freq), np.log10(self.max_freq), self.half_h, dtype=np.float32
         )
         self.log_freq_axis = np.log10(self.freq_axis)
+        octaves_from_min = np.log2(self.freq_axis / self.min_freq)
+        self.freq_tilt_gain = (10.0 ** ((octaves_from_min * self.tilt_db_per_octave) / 20.0)).astype(
+            np.float32
+        )
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
         fft_bins = np.count_nonzero(self.valid_bins)
@@ -70,6 +75,8 @@ class SpectrogramRenderer:
                 print(f"  pre_emphasis   : {self.pre_emphasis}")
             if self.denoise_reduction_db > 0.0:
                 print(f"  denoise_db     : {self.denoise_reduction_db}")
+            if self.tilt_db_per_octave != 0.0:
+                print(f"  tilt_db/octave : {self.tilt_db_per_octave}")
 
         if self.pre_emphasis > 0.0:
             self._apply_pre_emphasis()
@@ -108,6 +115,10 @@ class SpectrogramRenderer:
         col_r = np.interp(
             self.log_freq_axis, self.log_freqs, self.norm_buf[:, 1], left=0.0, right=0.0
         )
+
+        if self.tilt_db_per_octave != 0.0:
+            col_l *= self.freq_tilt_gain
+            col_r *= self.freq_tilt_gain
 
         # invert so low frequencies are at the bottom
         col_l = col_l[::-1]

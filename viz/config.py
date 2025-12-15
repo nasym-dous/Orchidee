@@ -77,6 +77,7 @@ class SpectrogramConfig:
     ceiling_db: float = 0.0
     pre_emphasis: float = 0
     denoise_reduction_db: float = 0
+    tilt_db_per_octave: float = 6.0
 
 
 @dataclass
