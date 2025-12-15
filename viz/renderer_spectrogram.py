@@ -15,6 +15,7 @@ class SpectrogramRenderer:
         self.min_freq = float(cfg.spectrogram.min_hz_bound)
         self.max_freq = float(cfg.spectrogram.max_freq_hz)
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
+        self.write_px = min(max(int(cfg.spectrogram.write_px), 1), self.scroll_px)
         self.pre_emphasis = float(cfg.spectrogram.pre_emphasis)
         self.denoise_reduction_db = float(cfg.spectrogram.denoise_reduction_db)
         self.tilt_db_per_octave = float(cfg.spectrogram.tilt_db_per_octave)
@@ -68,6 +69,7 @@ class SpectrogramRenderer:
             print(f"  frames         : {self.n_frames}")
             print(f"  window_size    : {self.window_size}")
             print(f"  scroll_px      : {self.scroll_px}")
+            print(f"  write_px       : {self.write_px}")
             print(f"  fft_size       : {self.fft_size}")
             print(f"  min_freq_hz    : {self.min_freq}")
             print(f"  max_freq_hz    : {self.max_freq}")
@@ -124,8 +126,8 @@ class SpectrogramRenderer:
         col_l = col_l[::-1]
         col_r = col_r[::-1]
 
-        col_l = np.tile(col_l[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
-        col_r = np.tile(col_r[:, None] * self.cfg.scroll.gain, (1, self.scroll_px))
+        col_l = np.tile(col_l[:, None] * self.cfg.scroll.gain, (1, self.write_px))
+        col_r = np.tile(col_r[:, None] * self.cfg.scroll.gain, (1, self.write_px))
         return col_l.astype(np.float32), col_r.astype(np.float32)
 
     def _render_frame(self, frame_idx: int) -> np.ndarray:
@@ -138,8 +140,8 @@ class SpectrogramRenderer:
         top = self.heat[: self.half_h]
         bottom = self.heat[self.half_h :]
 
-        top[:, -self.scroll_px:] = np.maximum(top[:, -self.scroll_px:], col_l)
-        bottom[:, -self.scroll_px:] = np.maximum(bottom[:, -self.scroll_px:], col_r)
+        top[:, -self.write_px:] = np.maximum(top[:, -self.write_px:], col_l)
+        bottom[:, -self.write_px:] = np.maximum(bottom[:, -self.write_px:], col_r)
 
         reveal_gain = float(self.cfg.scroll.reveal_gain)
         gamma = float(self.cfg.scroll.gamma)

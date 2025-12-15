@@ -73,6 +73,7 @@ class SpectrogramConfig:
     min_hz_bound: float = 2**5
     max_freq_hz: float = 2**13
     scroll_px: int = 8
+    write_px: int = 2
     window_size: int = 2**13
     fft_size: int = 2**13
     floor_db: float = -80
@@ -137,6 +138,8 @@ class AppConfig:
         assert self.spectrogram.min_hz_bound < self.spectrogram.max_freq_hz
         assert self.spectrogram.max_freq_hz > 0
         assert self.spectrogram.scroll_px >= 1
+        assert self.spectrogram.write_px >= 1
+        assert self.spectrogram.write_px <= self.spectrogram.scroll_px
         assert self.spectrogram.scroll_px <= self.render.render_w
         assert self.spectrogram.window_size > 0
         assert self.spectrogram.fft_size >= self.spectrogram.window_size
