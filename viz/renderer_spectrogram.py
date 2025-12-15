@@ -17,6 +17,9 @@ class SpectrogramRenderer:
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
         self.pre_emphasis = float(cfg.spectrogram.pre_emphasis)
         self.denoise_reduction_db = float(cfg.spectrogram.denoise_reduction_db)
+        self.floor_db = float(cfg.spectrogram.floor_db)
+        self.ceiling_db = float(cfg.spectrogram.ceiling_db)
+        self.db_range = self.ceiling_db - self.floor_db
         self.window = _prepare_window(self.window_size)
         self.windowed_buf = np.zeros((self.window_size, 2), dtype=np.float32)
         self.segment_buf = np.zeros((self.window_size, 2), dtype=np.float32)
@@ -57,6 +60,7 @@ class SpectrogramRenderer:
         fft_bins = np.count_nonzero(self.valid_bins)
         self.spectrum_buf = np.zeros((fft_bins, 2), dtype=np.float32)
         self.norm_buf = np.zeros_like(self.spectrum_buf)
+        self.db_buf = np.zeros_like(self.spectrum_buf)
 
         if cfg.verbose:
             print("🎛 Spectrogram renderer")
@@ -95,11 +99,13 @@ class SpectrogramRenderer:
             attenuation = 10.0 ** (self.denoise_reduction_db / 20.0)
             np.divide(self.spectrum_buf, attenuation, out=self.spectrum_buf)
 
-        peak = float(np.max(self.spectrum_buf))
-        if peak <= 0.0:
-            peak = 1.0
+        np.maximum(self.spectrum_buf, 1e-12, out=self.spectrum_buf)
 
-        np.divide(self.spectrum_buf, peak, out=self.norm_buf)
+        np.log10(self.spectrum_buf, out=self.db_buf)
+        np.multiply(self.db_buf, 20.0, out=self.db_buf)
+
+        np.subtract(self.db_buf, self.floor_db, out=self.norm_buf)
+        np.divide(self.norm_buf, self.db_range, out=self.norm_buf)
         np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
         col_l = np.interp(
