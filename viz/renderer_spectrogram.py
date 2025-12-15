@@ -52,6 +52,22 @@ class SpectrogramRenderer:
             np.log10(self.min_freq), np.log10(self.max_freq), self.half_h, dtype=np.float32
         )
         self.log_freq_axis = np.log10(self.freq_axis)
+
+        # Precompute frequency bin ranges per output row so we can take the max
+        # magnitude within each log bucket instead of interpolating. This keeps
+        # low-frequency content crisp rather than blurred across rows.
+        log_edges = np.empty(self.half_h + 1, dtype=np.float32)
+        log_edges[1:-1] = (self.log_freq_axis[:-1] + self.log_freq_axis[1:]) * 0.5
+        first_step = self.log_freq_axis[1] - self.log_freq_axis[0]
+        last_step = self.log_freq_axis[-1] - self.log_freq_axis[-2]
+        log_edges[0] = self.log_freq_axis[0] - first_step * 0.5
+        log_edges[-1] = self.log_freq_axis[-1] + last_step * 0.5
+
+        self.freq_bin_slices: list[tuple[int, int]] = []
+        for i in range(self.half_h):
+            start = int(np.searchsorted(self.log_freqs, log_edges[i], side="left"))
+            end = int(np.searchsorted(self.log_freqs, log_edges[i + 1], side="left"))
+            self.freq_bin_slices.append((start, end))
         octaves_from_min = np.log2(self.freq_axis / self.min_freq)
         self.freq_tilt_gain = (10.0 ** ((octaves_from_min * self.tilt_db_per_octave) / 20.0)).astype(
             np.float32
@@ -97,12 +113,17 @@ class SpectrogramRenderer:
         np.divide(self.spectrum_buf, peak, out=self.norm_buf)
         np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
-        col_l = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 0], left=0.0, right=0.0
-        )
-        col_r = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 1], left=0.0, right=0.0
-        )
+        col_l = np.empty(self.half_h, dtype=np.float32)
+        col_r = np.empty(self.half_h, dtype=np.float32)
+
+        for idx, (start, end) in enumerate(self.freq_bin_slices):
+            if start < end:
+                col_l[idx] = float(np.max(self.norm_buf[start:end, 0]))
+                col_r[idx] = float(np.max(self.norm_buf[start:end, 1]))
+            else:
+                pos = min(start, self.norm_buf.shape[0] - 1)
+                col_l[idx] = float(self.norm_buf[pos, 0])
+                col_r[idx] = float(self.norm_buf[pos, 1])
 
         if self.tilt_db_per_octave != 0.0:
             col_l *= self.freq_tilt_gain

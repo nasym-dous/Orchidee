@@ -19,7 +19,7 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 1920
+    w: int = 1080
     h: int = 1080
     fps: int = 60
     fourcc: str = "MJPG"
@@ -36,13 +36,13 @@ class EncodeConfig:
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1920
-    render_h: int = 1080
+    render_w: int = 360
+    render_h: int = 360
     batch: int = 8
     max_buffer_batches: int = 8
 
     # low-res alpha look
-    baseline: float = 0.25
+    baseline: float = 0.12
     glow_sigma: float = 0.0
     draw_center_lines: bool = False
 
@@ -72,12 +72,12 @@ class ScrollConfig:
 @dataclass
 class SpectrogramConfig:
     min_hz_bound: float = 2**5
-    max_freq_hz: float = 2**13
+    max_freq_hz: float = 2**14
     scroll_px: int = 16
     write_px: int = 1
-    window_size: int = 2**13
-    fft_size: int = 2**13
-    tilt_db_per_octave: float = 3.0
+    window_size: int = 2**14
+    fft_size: int = 2**14
+    tilt_db_per_octave: float = 1.5
 
 
 @dataclass
