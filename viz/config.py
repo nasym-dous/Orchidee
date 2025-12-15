@@ -14,6 +14,8 @@ class PathConfig:
 class AudioConfig:
     audio_path: str = "music.mp3"
     target_sr: int = 48000
+    clip_audio: bool = False
+    clip_seconds: int = 10
 
 
 @dataclass
@@ -104,6 +106,8 @@ class AppConfig:
         assert self.render.batch >= 1
         assert self.render.max_buffer_batches >= 1
         assert self.audio.target_sr >= 8000
+        if self.audio.clip_audio:
+            assert self.audio.clip_seconds > 0
         assert self.scroll.seconds_to_center >= 0.1
         assert self.scroll.scroll_px >= 1
         assert self.scroll.line_thickness >= 0

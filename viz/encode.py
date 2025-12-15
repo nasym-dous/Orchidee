@@ -1,9 +1,13 @@
 import subprocess
 
 
-def mux_audio(in_avi: str, audio_path: str, out_mp4: str, verbose: bool):
-    cmd = [
-        "ffmpeg", "-y",
+def mux_audio(in_avi: str, audio_path: str, out_mp4: str, verbose: bool, max_audio_seconds: int | None):
+    cmd = ["ffmpeg", "-y"]
+    if not verbose:
+        cmd.extend(["-v", "error"])
+    if max_audio_seconds is not None:
+        cmd.extend(["-t", str(max_audio_seconds)])
+    cmd.extend([
         "-i", in_avi,
         "-i", audio_path,
         "-c:v", "libx264",
@@ -13,8 +17,5 @@ def mux_audio(in_avi: str, audio_path: str, out_mp4: str, verbose: bool):
         "-c:a", "aac",
         "-shortest",
         out_mp4
-    ]
-    if not verbose:
-        cmd.insert(1, "-v")
-        cmd.insert(2, "error")
+    ])
     subprocess.run(cmd, check=True)
