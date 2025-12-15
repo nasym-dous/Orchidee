@@ -4,7 +4,7 @@ from queue import Queue
 from .config import AppConfig
 from .renderer_scrolling import ScrollingRenderer
 from .renderer_spectrogram import SpectrogramRenderer
-from .stats import format_batch_telemetry
+from .stats import log_batch_telemetry
 from .types import AlphaBatch, AudioChunk
 
 
@@ -32,10 +32,15 @@ def start_renderer_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, sto
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
                     batch_bytes = int(alphas.nbytes)
-                    print(
-                        format_batch_telemetry(
-                            "🧠 Renderer (producer)", t, n, batch_bytes, alpha_out, fps_prod
-                        )
+                    log_batch_telemetry(
+                        stage="🧠 Renderer (producer)",
+                        start_frame=t,
+                        batch_len=n,
+                        batch_bytes=batch_bytes,
+                        q=alpha_out,
+                        fps=fps_prod,
+                        target_fps=cfg.video.fps,
+                        engine="numpy scrolling",
                     )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
@@ -72,10 +77,15 @@ def start_spectrogram_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, 
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
                     batch_bytes = int(alphas.nbytes)
-                    print(
-                        format_batch_telemetry(
-                            "🧠 Spectrogram (producer)", t, n, batch_bytes, alpha_out, fps_prod
-                        )
+                    log_batch_telemetry(
+                        stage="🧠 Spectrogram (producer)",
+                        start_frame=t,
+                        batch_len=n,
+                        batch_bytes=batch_bytes,
+                        q=alpha_out,
+                        fps=fps_prod,
+                        target_fps=cfg.video.fps,
+                        engine="numpy spectrogram",
                     )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))

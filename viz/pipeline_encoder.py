@@ -5,7 +5,7 @@ from queue import Queue
 
 from .config import AppConfig
 from .encode import mux_audio
-from .stats import PerfCounter, batch_memory_mb, format_batch_telemetry, ram_mb
+from .stats import PerfCounter, batch_memory_mb, log_batch_telemetry, ram_mb
 from .types import FrameBatch
 
 
@@ -67,15 +67,18 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                     avg_fps = perf.frames / max(time.perf_counter() - perf.t0, 1e-6)
                     batch_bytes = sum(frame.nbytes for frame in batch.frames)
                     frame_mb = batch_memory_mb(batch.frames)
-                    telemetry = format_batch_telemetry(
-                        "📼 Encoder (consumer)",
-                        batch.start_frame,
-                        len(batch.frames),
-                        batch_bytes,
-                        frames_in,
-                        avg_fps,
+                    log_batch_telemetry(
+                        stage="📼 Encoder (consumer)",
+                        start_frame=batch.start_frame,
+                        batch_len=len(batch.frames),
+                        batch_bytes=batch_bytes,
+                        q=frames_in,
+                        fps=avg_fps,
+                        target_fps=cfg.video.fps,
+                        queue_hint=cfg.render.batch,
+                        engine="ffmpeg h264_videotoolbox",
+                        extra=f"batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB",
                     )
-                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB")
 
             frames_in.task_done()
             if cfg.verbose and (
@@ -86,15 +89,18 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                     fps = len(batch.frames) / dt_batch
                     batch_bytes = sum(frame.nbytes for frame in batch.frames)
                     frame_mb = batch_memory_mb(batch.frames)
-                    telemetry = format_batch_telemetry(
-                        "📼 Encoder (consumer)",
-                        batch.start_frame,
-                        len(batch.frames),
-                        batch_bytes,
-                        frames_in,
-                        fps,
+                    log_batch_telemetry(
+                        stage="📼 Encoder (consumer)",
+                        start_frame=batch.start_frame,
+                        batch_len=len(batch.frames),
+                        batch_bytes=batch_bytes,
+                        q=frames_in,
+                        fps=fps,
+                        target_fps=cfg.video.fps,
+                        queue_hint=cfg.render.batch,
+                        engine="ffmpeg h264_videotoolbox",
+                        extra=f"batch≈{frame_mb:.2f} MB (flush)",
                     )
-                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB (flush)")
 
         proc.stdin.close()
         return_code = proc.wait()
