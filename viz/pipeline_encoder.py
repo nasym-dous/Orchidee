@@ -1,7 +1,8 @@
+import subprocess
 import threading
 import time
 from queue import Queue
-import cv2
+
 from .config import AppConfig
 from .encode import mux_audio
 from .stats import PerfCounter, batch_memory_mb, format_batch_telemetry, ram_mb
@@ -12,14 +13,38 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
     """Encode frames to disk and mux the original audio."""
 
     def _run():
-        out = cv2.VideoWriter(
-            cfg.paths.out_avi,
-            cv2.VideoWriter_fourcc(*cfg.video.fourcc),
-            cfg.video.fps,
-            (cfg.video.w, cfg.video.h),
-        )
-        if not out.isOpened():
-            raise RuntimeError("VideoWriter non ouvert")
+        loglevel = "info" if cfg.verbose_lib else "error"
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            loglevel,
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{cfg.video.w}x{cfg.video.h}",
+            "-r",
+            str(cfg.video.fps),
+            "-i",
+            "-",
+            "-an",
+            "-c:v",
+            "h264_videotoolbox",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            cfg.encode.video_bitrate,
+            cfg.paths.out_video,
+        ]
+
+        try:
+            proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+        except FileNotFoundError as exc:
+            raise RuntimeError("ffmpeg introuvable dans le PATH") from exc
+        if proc.stdin is None:
+            raise RuntimeError("ffmpeg stdin non disponible")
 
         perf = PerfCounter()
         perf.start()
@@ -34,7 +59,7 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
             batch: FrameBatch = item
             t_batch0 = time.perf_counter()
             for frame in batch.frames:
-                out.write(frame)
+                proc.stdin.write(frame.tobytes())
                 written += 1
                 perf.tick(1)
 
@@ -71,7 +96,10 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                     )
                     print(f"{telemetry} | batch≈{frame_mb:.2f} MB (flush)")
 
-        out.release()
+        proc.stdin.close()
+        return_code = proc.wait()
+        if return_code != 0:
+            raise RuntimeError(f"ffmpeg a échoué avec le code {return_code}")
         perf.stop()
 
         if cfg.verbose:
@@ -79,13 +107,14 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
             print(f"  frames rendered : {perf.frames}")
             print(f"  avg FPS         : {perf.avg_fps():.2f}")
             print(f"  RAM (now)       : {ram_mb():.0f} MB")
-            print(f"✅ Vidéo MJPG terminée : {cfg.paths.out_avi}")
+            print(f"✅ Vidéo ffmpeg terminée : {cfg.paths.out_video}")
 
         mux_audio(
-            in_avi=cfg.paths.out_avi,
+            in_video=cfg.paths.out_video,
             audio_path=cfg.audio.audio_path,
             out_mp4=cfg.paths.out_final,
             verbose=cfg.verbose,
+            verbose_lib=cfg.verbose_lib,
             encode=cfg.encode,
         )
 
