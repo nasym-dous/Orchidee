@@ -1,4 +1,6 @@
 import numpy as np
+import jax
+import jax.numpy as jnp
 from .config import AppConfig
 
 
@@ -18,8 +20,6 @@ class SpectrogramRenderer:
         self.write_px = min(max(int(cfg.spectrogram.write_px), 1), self.scroll_px)
         self.tilt_db_per_octave = float(cfg.spectrogram.tilt_db_per_octave)
         self.window = _prepare_window(self.window_size)
-        self.windowed_buf = np.zeros((self.window_size, 2), dtype=np.float32)
-        self.segment_buf = np.zeros((self.window_size, 2), dtype=np.float32)
 
         self.spf = max(int(cfg.audio.target_sr // cfg.video.fps), 1)
         self.n_frames = int(np.ceil(self.audio.shape[0] / self.spf))
@@ -58,24 +58,20 @@ class SpectrogramRenderer:
         )
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
-        # pre-allocate buffers to avoid re-creating large arrays every frame
         self.columns_to_generate = int(np.ceil(self.scroll_px / max(self.write_px, 1)))
 
-        fft_bins = np.count_nonzero(self.valid_bins)
-        self.spectrum_buf = np.zeros((fft_bins, 2), dtype=np.float32)
-        self.norm_buf = np.zeros_like(self.spectrum_buf)
+        # GPU friendly buffers/constants
+        padded_audio = np.pad(self.audio, ((0, self.window_size), (0, 0)))
+        self.audio_jnp = jnp.asarray(padded_audio)
+        self.window_jnp = jnp.asarray(self.window)
+        self.freqs_jnp = jnp.asarray(self.freqs)
+        self.log_freqs_jnp = jnp.asarray(self.log_freqs)
+        self.log_freq_axis_jnp = jnp.asarray(self.log_freq_axis)
+        self.freq_tilt_gain_jnp = jnp.asarray(self.freq_tilt_gain)
+        self.valid_bins_jnp = jnp.asarray(self.valid_bins)
 
-        self.window_batch = np.zeros(
-            (self.columns_to_generate, self.window_size, 2), dtype=np.float32
-        )
-        self.spectrum_batch = np.zeros(
-            (self.columns_to_generate, fft_bins, 2), dtype=np.float32
-        )
-        self.norm_batch = np.zeros_like(self.spectrum_batch)
-        self.col_l_buf = np.zeros((self.columns_to_generate, self.half_h), dtype=np.float32)
-        self.col_r_buf = np.zeros_like(self.col_l_buf)
-        self.col_img_l = np.zeros((self.half_h, self.scroll_px), dtype=np.float32)
-        self.col_img_r = np.zeros_like(self.col_img_l)
+        self.columns_idx = jnp.arange(self.columns_to_generate, dtype=jnp.int32)
+        self._build_gpu_renderer()
 
         if cfg.verbose:
             print("🎛 Spectrogram renderer")
@@ -89,127 +85,123 @@ class SpectrogramRenderer:
             if self.tilt_db_per_octave != 0.0:
                 print(f"  tilt_db/octave : {self.tilt_db_per_octave}")
 
-    def _slice_audio(self, start: int) -> np.ndarray:
-        end = start + self.window_size
-        segment = self.segment_buf
-        segment.fill(0.0)
-        chunk = self.audio[start:end]
-        segment[: chunk.shape[0]] = chunk
-        np.multiply(segment, self.window[:, None], out=self.windowed_buf)
-        return self.windowed_buf
+    def _build_gpu_renderer(self) -> None:
+        cfg = self.cfg
+        spf = self.spf
+        scroll_px = int(self.scroll_px)
+        write_px = int(self.write_px)
+        columns_to_generate = int(self.columns_to_generate)
+        window_size = int(self.window_size)
+        fft_size = int(self.fft_size)
+        h = int(self.h)
+        half_h = int(self.half_h)
+        gain = float(cfg.scroll.gain)
+        decay = float(cfg.scroll.decay)
+        reveal_gain = float(cfg.scroll.reveal_gain)
+        gamma = float(cfg.scroll.gamma)
 
-    def _compute_column_at(self, start_sample: int) -> tuple[np.ndarray, np.ndarray]:
-        windowed = self._slice_audio(start_sample)
+        audio = self.audio_jnp
+        window = self.window_jnp
+        freq_tilt_gain = self.freq_tilt_gain_jnp
+        log_freq_axis = self.log_freq_axis_jnp
+        log_freqs = self.log_freqs_jnp
+        valid_bins = self.valid_bins_jnp
+        col_indices = self.columns_idx
 
-        spectrum = np.fft.rfft(windowed, n=self.fft_size, axis=0)[self.valid_bins]
-        np.abs(spectrum, out=self.spectrum_buf)
-        np.maximum(self.spectrum_buf, 1e-12, out=self.spectrum_buf)
+        audio_len = audio.shape[0]
+        max_start = jnp.int32(audio_len - window_size)
 
-        peak = float(np.max(self.spectrum_buf))
-        if peak <= 0.0:
-            peak = 1.0
+        def slice_window(start_idx: jnp.ndarray) -> jnp.ndarray:
+            safe_start = jnp.minimum(jnp.maximum(start_idx, 0), max_start)
+            return jax.lax.dynamic_slice(audio, (safe_start, 0), (window_size, 2))
 
-        np.divide(self.spectrum_buf, peak, out=self.norm_buf)
-        np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
+        def make_columns(t0: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+            start_sample = t0 * spf
+            hop = spf / jnp.maximum(columns_to_generate, 1)
+            starts = start_sample + hop * col_indices.astype(jnp.float32)
+            start_ids = jnp.floor(starts).astype(jnp.int32)
 
-        col_l = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 0], left=0.0, right=0.0
-        )
-        col_r = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 1], left=0.0, right=0.0
-        )
+            windows = jax.vmap(slice_window)(start_ids)
+            windows = windows * window[None, :, None]
 
-        if self.tilt_db_per_octave != 0.0:
-            col_l *= self.freq_tilt_gain
-            col_r *= self.freq_tilt_gain
+            spectrum = jnp.fft.rfft(windows, n=fft_size, axis=1)[:, valid_bins]
+            mag = jnp.maximum(jnp.abs(spectrum).astype(jnp.float32), 1e-12)
 
-        # invert so low frequencies are at the bottom
-        col_l = col_l[::-1]
-        col_r = col_r[::-1]
+            peaks = jnp.max(mag, axis=(1, 2))
+            peaks = jnp.where(peaks > 0.0, peaks, 1.0)
+            norm = jnp.clip(mag / peaks[:, None, None], 0.0, 1.0)
 
-        return col_l.astype(np.float32), col_r.astype(np.float32)
+            def interp_channel(arr):
+                return jnp.interp(log_freq_axis, log_freqs, arr, left=0.0, right=0.0)
 
-    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
-        start_sample = frame_idx * self.spf
-        hop = self.spf / max(self.columns_to_generate, 1)
+            col_l = jax.vmap(lambda a: interp_channel(a[:, 0]))(norm)
+            col_r = jax.vmap(lambda a: interp_channel(a[:, 1]))(norm)
 
-        col_img_l = self.col_img_l
-        col_img_r = self.col_img_r
-        col_img_l.fill(0.0)
-        col_img_r.fill(0.0)
+            if self.tilt_db_per_octave != 0.0:
+                col_l = col_l * freq_tilt_gain
+                col_r = col_r * freq_tilt_gain
 
-        starts = start_sample + (hop * np.arange(self.columns_to_generate))
-        window_batch = self.window_batch
-        window_batch.fill(0.0)
-        for idx, s in enumerate(starts):
-            chunk_start = int(s)
-            chunk_end = chunk_start + self.window_size
-            chunk = self.audio[chunk_start:chunk_end]
-            window_batch[idx, : chunk.shape[0]] = chunk
+            col_l = col_l[:, ::-1]
+            col_r = col_r[:, ::-1]
 
-        np.multiply(window_batch, self.window[None, :, None], out=window_batch)
+            def write_columns(i, imgs):
+                img_l, img_r = imgs
+                start_px = i * write_px
+                end_px = jnp.minimum(start_px + write_px, scroll_px)
+                def do_write(img_l, img_r):
+                    slice_l = col_l[i][:, None]
+                    slice_r = col_r[i][:, None]
+                    img_l = jax.lax.dynamic_update_slice(img_l, slice_l, (0, start_px))
+                    img_r = jax.lax.dynamic_update_slice(img_r, slice_r, (0, start_px))
+                    return img_l, img_r
+                img_l, img_r = jax.lax.cond(
+                    start_px < scroll_px, do_write, lambda a, b: (a, b), img_l, img_r
+                )
+                return img_l, img_r
 
-        spectrum = np.fft.rfft(window_batch, n=self.fft_size, axis=1)[:, self.valid_bins]
-        spectrum_view = self.spectrum_batch[: spectrum.shape[0]]
-        np.abs(spectrum, out=spectrum_view)
-        np.maximum(spectrum_view, 1e-12, out=spectrum_view)
-
-        peaks = np.max(spectrum_view, axis=(1, 2))
-        peaks[peaks <= 0.0] = 1.0
-
-        norm_view = self.norm_batch[: spectrum.shape[0]]
-        np.divide(spectrum_view, peaks[:, None, None], out=norm_view)
-        np.clip(norm_view, 0.0, 1.0, out=norm_view)
-
-        col_l_buf = self.col_l_buf
-        col_r_buf = self.col_r_buf
-        for i in range(norm_view.shape[0]):
-            col_l_buf[i] = np.interp(
-                self.log_freq_axis, self.log_freqs, norm_view[i, :, 0], left=0.0, right=0.0
+            init_imgs = (
+                jnp.zeros((half_h, scroll_px), dtype=jnp.float32),
+                jnp.zeros((half_h, scroll_px), dtype=jnp.float32),
             )
-            col_r_buf[i] = np.interp(
-                self.log_freq_axis, self.log_freqs, norm_view[i, :, 1], left=0.0, right=0.0
-            )
+            col_img_l, col_img_r = jax.lax.fori_loop(0, columns_to_generate, write_columns, init_imgs)
+            return col_img_l * gain, col_img_r * gain
 
-        if self.tilt_db_per_octave != 0.0:
-            col_l_buf *= self.freq_tilt_gain
-            col_r_buf *= self.freq_tilt_gain
+        def render_one(t0: jnp.ndarray, heat: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+            heat = heat * decay
+            heat = jnp.concatenate([heat[:, self.scroll_px :], jnp.zeros((h, self.scroll_px), heat.dtype)], axis=1)
 
-        col_l_view = col_l_buf[:, ::-1]
-        col_r_view = col_r_buf[:, ::-1]
+            col_l, col_r = make_columns(t0)
 
-        for i in range(norm_view.shape[0]):
-            start_px = i * self.write_px
-            end_px = min(start_px + self.write_px, self.scroll_px)
-            if start_px >= self.scroll_px:
-                break
-            col_img_l[:, start_px:end_px] = col_l_view[i][:, None]
-            col_img_r[:, start_px:end_px] = col_r_view[i][:, None]
+            top = heat[:half_h]
+            bottom = heat[half_h:]
 
-        return (
-            (col_img_l * self.cfg.scroll.gain).astype(np.float32),
-            (col_img_r * self.cfg.scroll.gain).astype(np.float32),
-        )
+            top = top.at[:, -scroll_px:].set(jnp.maximum(top[:, -scroll_px:], col_l))
+            bottom = bottom.at[:, -scroll_px:].set(jnp.maximum(bottom[:, -scroll_px:], col_r))
 
-    def _render_frame(self, frame_idx: int) -> np.ndarray:
-        self.heat *= float(self.cfg.scroll.decay)
-        self.heat[:, :-self.scroll_px] = self.heat[:, self.scroll_px:]
-        self.heat[:, -self.scroll_px:] = 0.0
+            heat = jnp.concatenate([top, bottom], axis=0)
 
-        col_l, col_r = self._compute_columns(frame_idx)
+            alpha = 1.0 - jnp.exp(-heat * reveal_gain)
+            alpha = jnp.clip(alpha ** gamma, 0.0, 1.0)
+            alpha_u8 = (alpha * 255.0).astype(jnp.uint8)
+            return heat, alpha_u8
 
-        top = self.heat[: self.half_h]
-        bottom = self.heat[self.half_h :]
+        @jax.jit
+        def render_batch(t0: jnp.ndarray, heat: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+            def step(carry, idx):
+                h = carry
+                h, alpha = render_one(t0 + idx, h)
+                return h, alpha
 
-        top[:, -self.scroll_px:] = np.maximum(top[:, -self.scroll_px:], col_l)
-        bottom[:, -self.scroll_px:] = np.maximum(bottom[:, -self.scroll_px:], col_r)
+            heat, alphas = jax.lax.scan(step, heat, jnp.arange(cfg.render.batch, dtype=jnp.int32))
+            return heat, alphas
 
-        reveal_gain = float(self.cfg.scroll.reveal_gain)
-        gamma = float(self.cfg.scroll.gamma)
-        alpha = 1.0 - np.exp(-self.heat * reveal_gain)
-        alpha = np.clip(alpha ** gamma, 0.0, 1.0)
-        return (alpha * 255.0).astype(np.uint8)
+        self._render_one = render_one
+        self._render_batch = render_batch
+        self.heat = jnp.zeros((h, self.w), dtype=jnp.float32)
+        _, warm = self._render_batch(jnp.int32(0), self.heat)
+        _ = jax.device_get(warm)
 
     def next_alphas(self, t0: int, n: int) -> np.ndarray:
-        frames = [self._render_frame(t0 + i) for i in range(n)]
-        return np.stack(frames, axis=0)
+        heat, alphas = self._render_batch(jnp.int32(t0), self.heat)
+        self.heat = heat
+        return np.asarray(jax.device_get(alphas))[:n]
