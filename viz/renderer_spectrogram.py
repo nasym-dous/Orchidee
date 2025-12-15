@@ -124,7 +124,11 @@ class SpectrogramRenderer:
             windows = jax.vmap(slice_window)(start_ids)
             windows = windows * window[None, :, None]
 
-            spectrum = jnp.fft.rfft(windows, n=fft_size, axis=1)[:, valid_bins]
+            # Metal backend only supports FFT over the last axis; transpose so time
+            # is last to keep the op legal across devices.
+            windows_ch_last = jnp.transpose(windows, (0, 2, 1))
+            spectrum = jnp.fft.rfft(windows_ch_last, n=fft_size, axis=-1)[:, :, valid_bins]
+            spectrum = jnp.transpose(spectrum, (0, 2, 1))
             mag = jnp.maximum(jnp.abs(spectrum).astype(jnp.float32), 1e-12)
 
             peaks = jnp.max(mag, axis=(1, 2))
