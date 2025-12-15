@@ -54,13 +54,8 @@ class SpectrogramRenderer:
         self.log_freq_axis = np.log10(self.freq_axis)
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
-        self.floor_db = float(cfg.spectrogram.floor_db)
-        self.ceiling_db = float(cfg.spectrogram.ceiling_db)
-        self.norm_denom = max(self.ceiling_db - self.floor_db, 1e-6)
-
         fft_bins = np.count_nonzero(self.valid_bins)
         self.spectrum_buf = np.zeros((fft_bins, 2), dtype=np.float32)
-        self.mag_db_buf = np.zeros_like(self.spectrum_buf)
         self.norm_buf = np.zeros_like(self.spectrum_buf)
 
         if cfg.verbose:
@@ -96,14 +91,15 @@ class SpectrogramRenderer:
         np.abs(spectrum, out=self.spectrum_buf)
         np.maximum(self.spectrum_buf, 1e-12, out=self.spectrum_buf)
 
-        np.log10(self.spectrum_buf, out=self.mag_db_buf)
-        self.mag_db_buf *= 20.0
-
         if self.denoise_reduction_db > 0.0:
-            np.subtract(self.mag_db_buf, self.denoise_reduction_db, out=self.mag_db_buf)
+            attenuation = 10.0 ** (self.denoise_reduction_db / 20.0)
+            np.divide(self.spectrum_buf, attenuation, out=self.spectrum_buf)
 
-        np.subtract(self.mag_db_buf, self.floor_db, out=self.norm_buf)
-        self.norm_buf *= 1.0 / self.norm_denom
+        peak = float(np.max(self.spectrum_buf))
+        if peak <= 0.0:
+            peak = 1.0
+
+        np.divide(self.spectrum_buf, peak, out=self.norm_buf)
         np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
         col_l = np.interp(
