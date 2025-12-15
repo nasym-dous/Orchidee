@@ -6,7 +6,7 @@ import os
 class PathConfig:
     audio_path: str = "0481 v41B.mp3"
     cover_path: str = "cover.jpeg"
-    out_avi: str = "out.avi"
+    out_video: str = "out_video.mp4"
     out_final: str = "out_with_audio.mp4"
 
 
@@ -31,6 +31,7 @@ class EncodeConfig:
     video_preset: str = "slow"
     audio_bitrate: str = "320k"
     audio_codec: str = "aac"
+    video_bitrate: str = "20M"
 
 
 @dataclass
@@ -118,6 +119,7 @@ class AppConfig:
         assert self.encode.video_preset
         assert self.encode.audio_bitrate
         assert self.encode.audio_codec
+        assert self.encode.video_bitrate
         assert self.render.render_w > 0 and self.render.render_h > 0
         assert self.render.render_w % 2 == 0, "render_w doit être pair (split stéréo propre)"
         assert self.render.batch >= 1
