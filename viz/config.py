@@ -68,14 +68,14 @@ class ScrollConfig:
 
 @dataclass
 class SpectrogramConfig:
-    min_hz_bound: float = 20.0
-    max_freq_hz: float = 24_000.0
-    scroll_px: int = 4
+    min_hz_bound: float = 30.0
+    max_freq_hz: float = 16_000.0
+    scroll_px: int = 8
     window_size: int = 2**14
     fft_size: int = 2**14
-    floor_db: float = -9.0
+    floor_db: float = -80
     ceiling_db: float = 0.0
-    pre_emphasis: float = 0.99
+    pre_emphasis: float = 0
     denoise_reduction_db: float = 0
 
 
