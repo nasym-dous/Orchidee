@@ -4,6 +4,25 @@ import jax.numpy as jnp
 from .config import AppConfig
 
 
+def _select_fft_backend(fft_size: int):
+    """Return a JIT backend that supports FFT, preferring the default device.
+
+    Metal currently fails to lower ``mhlo.fft`` in some configurations, so we
+    probe a minimal rFFT and fall back to CPU if compilation fails. The rest of
+    the pipeline will still run through JAX, just using the CPU backend.
+    """
+
+    try:
+        test_fft = jax.jit(lambda x: jnp.fft.rfft(x, n=fft_size, axis=-1))
+        _ = np.asarray(test_fft(jnp.zeros((1, fft_size), dtype=jnp.float32)))
+        return None
+    except Exception as exc:  # pragma: no cover - environment-specific
+        print(
+            f"⚠️ Falling back to CPU for spectrogram FFT due to backend issue: {exc}"
+        )
+        return "cpu"
+
+
 def _prepare_window(n: int) -> np.ndarray:
     """Return a Hann window of length ``n`` as ``float32``."""
 
@@ -148,6 +167,8 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
     reveal_gain = float(cfg.scroll.reveal_gain)
     gamma = float(cfg.scroll.gamma)
 
+    jit_backend = _select_fft_backend(fft_size)
+
     slice_audio = _make_slice_audio(audio, window, window_size, spf, n_samples)
     compute_columns = _make_compute_columns(
         slice_audio,
@@ -160,7 +181,7 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
         gain,
     )
 
-    @jax.jit
+    @jax.jit(backend=jit_backend)
     def render_one(frame_idx: jnp.ndarray, heat: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         heat = heat * decay
         heat = jnp.concatenate(
@@ -182,7 +203,7 @@ def build_renderer_spectrogram_alpha(audio_np: np.ndarray, cfg: AppConfig):
         alpha_u8 = (alpha * 255.0).astype(jnp.uint8)
         return heat, alpha_u8
 
-    @jax.jit
+    @jax.jit(backend=jit_backend)
     def make_batch(t0: jnp.ndarray, heat: jnp.ndarray):
         def step(carry, i):
             h, _ = carry
