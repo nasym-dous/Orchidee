@@ -4,7 +4,7 @@ from queue import Queue
 from typing import Callable
 import numpy as np
 from .config import AppConfig
-from .stats import batch_memory_mb, format_batch_telemetry
+from .stats import batch_memory_mb, format_batch_telemetry, perf_board
 from .types import AlphaBatch, FrameBatch
 
 CompositorFn = Callable[[np.ndarray, np.ndarray, AppConfig], np.ndarray]
@@ -42,9 +42,10 @@ def start_compositor_filter(
                     alpha_bytes,
                     alpha_in,
                     fps_cons,
+                    detail="numpy compositor",
+                    suffix=f" | output_batch≈{batch_memory_mb(frames):.2f} MB",
                 )
-                frame_mb = batch_memory_mb(frames)
-                print(f"{telemetry} | output_batch≈{frame_mb:.2f} MB")
+                perf_board.update("🖼️ Compositor (consumer)", telemetry)
             frame_out.put(FrameBatch(start_frame=alpha_batch.start_frame, frames=frames))
             alpha_in.task_done()
 

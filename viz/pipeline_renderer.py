@@ -4,7 +4,7 @@ from queue import Queue
 from .config import AppConfig
 from .renderer_scrolling import ScrollingRenderer
 from .renderer_spectrogram import SpectrogramRenderer
-from .stats import format_batch_telemetry
+from .stats import format_batch_telemetry, perf_board
 from .types import AlphaBatch, AudioChunk
 
 
@@ -32,10 +32,17 @@ def start_renderer_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, sto
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
                     batch_bytes = int(alphas.nbytes)
-                    print(
+                    perf_board.update(
+                        "🧠 Renderer (producer)",
                         format_batch_telemetry(
-                            "🧠 Renderer (producer)", t, n, batch_bytes, alpha_out, fps_prod
-                        )
+                            "🧠 Renderer (producer)",
+                            t,
+                            n,
+                            batch_bytes,
+                            alpha_out,
+                            fps_prod,
+                            detail="scrolling renderer",
+                        ),
                     )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))
@@ -72,10 +79,17 @@ def start_spectrogram_filter(cfg: AppConfig, audio_in: Queue, alpha_out: Queue, 
                 if cfg.verbose and (t == 0 or t % (cfg.video.fps * 5) == 0):
                     fps_prod = n / max(dt, 1e-6)
                     batch_bytes = int(alphas.nbytes)
-                    print(
+                    perf_board.update(
+                        "🧠 Spectrogram (producer)",
                         format_batch_telemetry(
-                            "🧠 Spectrogram (producer)", t, n, batch_bytes, alpha_out, fps_prod
-                        )
+                            "🧠 Spectrogram (producer)",
+                            t,
+                            n,
+                            batch_bytes,
+                            alpha_out,
+                            fps_prod,
+                            detail="spectrogram renderer",
+                        ),
                     )
 
                 alpha_out.put(AlphaBatch(start_frame=t, alphas=alphas))

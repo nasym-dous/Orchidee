@@ -5,7 +5,7 @@ from queue import Queue
 
 from .config import AppConfig
 from .encode import mux_audio
-from .stats import PerfCounter, batch_memory_mb, format_batch_telemetry, ram_mb
+from .stats import PerfCounter, batch_memory_mb, format_batch_telemetry, perf_board, ram_mb
 from .types import FrameBatch
 
 
@@ -74,8 +74,10 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                         batch_bytes,
                         frames_in,
                         avg_fps,
+                        detail="ffmpeg h264_videotoolbox",
+                        suffix=f" | batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB",
                     )
-                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB | RAM ≈ {ram_mb():.0f} MB")
+                    perf_board.update("📼 Encoder (consumer)", telemetry)
 
             frames_in.task_done()
             if cfg.verbose and (
@@ -93,8 +95,10 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
                         batch_bytes,
                         frames_in,
                         fps,
+                        detail="ffmpeg h264_videotoolbox",
+                        suffix=f" | batch≈{frame_mb:.2f} MB (flush)",
                     )
-                    print(f"{telemetry} | batch≈{frame_mb:.2f} MB (flush)")
+                    perf_board.update("📼 Encoder (consumer)", telemetry)
 
         proc.stdin.close()
         return_code = proc.wait()
