@@ -23,6 +23,7 @@ class VideoConfig:
     h: int = 1080
     fps: int = 60
     fourcc: str = "MJPG"
+    hw_accel: str | None = None  # e.g. "videotoolbox", "vaapi", "any" or "none"
 
 
 @dataclass
@@ -114,6 +115,11 @@ class AppConfig:
     def validate(self):
         assert self.video.w > 0 and self.video.h > 0
         assert self.video.fps > 0
+        if self.video.hw_accel is not None:
+            supported_hw_accel = {"videotoolbox", "vaapi", "any", "none"}
+            assert (
+                self.video.hw_accel in supported_hw_accel
+            ), f"Unknown hardware acceleration '{self.video.hw_accel}'"
         assert 0 <= self.encode.video_crf <= 51
         assert self.encode.video_preset
         assert self.encode.audio_bitrate

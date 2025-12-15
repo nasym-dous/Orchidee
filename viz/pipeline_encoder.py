@@ -11,12 +11,46 @@ from .types import FrameBatch
 def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> threading.Thread:
     """Encode frames to disk and mux the original audio."""
 
+    def _writer_params() -> list:
+        """Build OpenCV VideoWriter params for optional hardware acceleration.
+
+        If the current OpenCV build includes VideoToolbox (or other accelerators),
+        setting the VIDEOWRITER_PROP_HW_ACCELERATION property is enough to enable
+        it. Otherwise, the user needs an OpenCV build compiled with that backend.
+        """
+
+        if cfg.video.hw_accel is None:
+            return []
+
+        prop_hw_accel = getattr(cv2, "VIDEOWRITER_PROP_HW_ACCELERATION", None)
+        if prop_hw_accel is None:
+            raise RuntimeError(
+                "OpenCV does not expose VIDEOWRITER_PROP_HW_ACCELERATION; "
+                "install a build compiled with the desired hardware codec (e.g. VideoToolbox)."
+            )
+
+        accel_map = {
+            "videotoolbox": getattr(cv2, "VIDEO_ACCELERATION_VIDEOTOOLBOX", None),
+            "vaapi": getattr(cv2, "VIDEO_ACCELERATION_VAAPI", None),
+            "any": getattr(cv2, "VIDEO_ACCELERATION_ANY", None),
+            "none": getattr(cv2, "VIDEO_ACCELERATION_NONE", None),
+        }
+
+        accel_value = accel_map.get(cfg.video.hw_accel)
+        if accel_value is None:
+            raise RuntimeError(
+                f"Hardware acceleration '{cfg.video.hw_accel}' is not available in this OpenCV build."
+            )
+
+        return [prop_hw_accel, accel_value]
+
     def _run():
         out = cv2.VideoWriter(
             cfg.paths.out_avi,
             cv2.VideoWriter_fourcc(*cfg.video.fourcc),
             cfg.video.fps,
             (cfg.video.w, cfg.video.h),
+            params=_writer_params(),
         )
         if not out.isOpened():
             raise RuntimeError("VideoWriter non ouvert")
