@@ -83,8 +83,7 @@ class SpectrogramRenderer:
         np.multiply(segment, self.window[:, None], out=self.windowed_buf)
         return self.windowed_buf
 
-    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
-        start_sample = frame_idx * self.spf
+    def _compute_column_at(self, start_sample: int) -> tuple[np.ndarray, np.ndarray]:
         windowed = self._slice_audio(start_sample)
 
         spectrum = np.fft.rfft(windowed, n=self.fft_size, axis=0)[self.valid_bins]
@@ -113,9 +112,31 @@ class SpectrogramRenderer:
         col_l = col_l[::-1]
         col_r = col_r[::-1]
 
-        col_l = np.tile(col_l[:, None] * self.cfg.scroll.gain, (1, self.write_px))
-        col_r = np.tile(col_r[:, None] * self.cfg.scroll.gain, (1, self.write_px))
         return col_l.astype(np.float32), col_r.astype(np.float32)
+
+    def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
+        start_sample = frame_idx * self.spf
+        columns_to_generate = int(np.ceil(self.scroll_px / self.write_px))
+        hop = self.spf / max(columns_to_generate, 1)
+
+        cols_l: list[np.ndarray] = []
+        cols_r: list[np.ndarray] = []
+
+        for i in range(columns_to_generate):
+            col_l, col_r = self._compute_column_at(int(start_sample + i * hop))
+            col_l = np.tile(col_l[:, None], (1, self.write_px))
+            col_r = np.tile(col_r[:, None], (1, self.write_px))
+            cols_l.append(col_l)
+            cols_r.append(col_r)
+
+        col_l_full = np.concatenate(cols_l, axis=1) * self.cfg.scroll.gain
+        col_r_full = np.concatenate(cols_r, axis=1) * self.cfg.scroll.gain
+
+        if col_l_full.shape[1] > self.scroll_px:
+            col_l_full = col_l_full[:, -self.scroll_px :]
+            col_r_full = col_r_full[:, -self.scroll_px :]
+
+        return col_l_full.astype(np.float32), col_r_full.astype(np.float32)
 
     def _render_frame(self, frame_idx: int) -> np.ndarray:
         self.heat *= float(self.cfg.scroll.decay)
@@ -127,8 +148,8 @@ class SpectrogramRenderer:
         top = self.heat[: self.half_h]
         bottom = self.heat[self.half_h :]
 
-        top[:, -self.write_px:] = np.maximum(top[:, -self.write_px:], col_l)
-        bottom[:, -self.write_px:] = np.maximum(bottom[:, -self.write_px:], col_r)
+        top[:, -self.scroll_px:] = np.maximum(top[:, -self.scroll_px:], col_l)
+        bottom[:, -self.scroll_px:] = np.maximum(bottom[:, -self.scroll_px:], col_r)
 
         reveal_gain = float(self.cfg.scroll.reveal_gain)
         gamma = float(self.cfg.scroll.gamma)
