@@ -58,9 +58,24 @@ class SpectrogramRenderer:
         )
         self.heat = np.zeros((self.h, self.w), dtype=np.float32)
 
+        # pre-allocate buffers to avoid re-creating large arrays every frame
+        self.columns_to_generate = int(np.ceil(self.scroll_px / max(self.write_px, 1)))
+
         fft_bins = np.count_nonzero(self.valid_bins)
         self.spectrum_buf = np.zeros((fft_bins, 2), dtype=np.float32)
         self.norm_buf = np.zeros_like(self.spectrum_buf)
+
+        self.window_batch = np.zeros(
+            (self.columns_to_generate, self.window_size, 2), dtype=np.float32
+        )
+        self.spectrum_batch = np.zeros(
+            (self.columns_to_generate, fft_bins, 2), dtype=np.float32
+        )
+        self.norm_batch = np.zeros_like(self.spectrum_batch)
+        self.col_l_buf = np.zeros((self.columns_to_generate, self.half_h), dtype=np.float32)
+        self.col_r_buf = np.zeros_like(self.col_l_buf)
+        self.col_img_l = np.zeros((self.half_h, self.scroll_px), dtype=np.float32)
+        self.col_img_r = np.zeros_like(self.col_img_l)
 
         if cfg.verbose:
             print("🎛 Spectrogram renderer")
@@ -116,27 +131,65 @@ class SpectrogramRenderer:
 
     def _compute_columns(self, frame_idx: int) -> tuple[np.ndarray, np.ndarray]:
         start_sample = frame_idx * self.spf
-        columns_to_generate = int(np.ceil(self.scroll_px / self.write_px))
-        hop = self.spf / max(columns_to_generate, 1)
+        hop = self.spf / max(self.columns_to_generate, 1)
 
-        cols_l: list[np.ndarray] = []
-        cols_r: list[np.ndarray] = []
+        col_img_l = self.col_img_l
+        col_img_r = self.col_img_r
+        col_img_l.fill(0.0)
+        col_img_r.fill(0.0)
 
-        for i in range(columns_to_generate):
-            col_l, col_r = self._compute_column_at(int(start_sample + i * hop))
-            col_l = np.tile(col_l[:, None], (1, self.write_px))
-            col_r = np.tile(col_r[:, None], (1, self.write_px))
-            cols_l.append(col_l)
-            cols_r.append(col_r)
+        starts = start_sample + (hop * np.arange(self.columns_to_generate))
+        window_batch = self.window_batch
+        window_batch.fill(0.0)
+        for idx, s in enumerate(starts):
+            chunk_start = int(s)
+            chunk_end = chunk_start + self.window_size
+            chunk = self.audio[chunk_start:chunk_end]
+            window_batch[idx, : chunk.shape[0]] = chunk
 
-        col_l_full = np.concatenate(cols_l, axis=1) * self.cfg.scroll.gain
-        col_r_full = np.concatenate(cols_r, axis=1) * self.cfg.scroll.gain
+        np.multiply(window_batch, self.window[None, :, None], out=window_batch)
 
-        if col_l_full.shape[1] > self.scroll_px:
-            col_l_full = col_l_full[:, -self.scroll_px :]
-            col_r_full = col_r_full[:, -self.scroll_px :]
+        spectrum = np.fft.rfft(window_batch, n=self.fft_size, axis=1)[:, self.valid_bins]
+        spectrum_view = self.spectrum_batch[: spectrum.shape[0]]
+        np.abs(spectrum, out=spectrum_view)
+        np.maximum(spectrum_view, 1e-12, out=spectrum_view)
 
-        return col_l_full.astype(np.float32), col_r_full.astype(np.float32)
+        peaks = np.max(spectrum_view, axis=(1, 2))
+        peaks[peaks <= 0.0] = 1.0
+
+        norm_view = self.norm_batch[: spectrum.shape[0]]
+        np.divide(spectrum_view, peaks[:, None, None], out=norm_view)
+        np.clip(norm_view, 0.0, 1.0, out=norm_view)
+
+        col_l_buf = self.col_l_buf
+        col_r_buf = self.col_r_buf
+        for i in range(norm_view.shape[0]):
+            col_l_buf[i] = np.interp(
+                self.log_freq_axis, self.log_freqs, norm_view[i, :, 0], left=0.0, right=0.0
+            )
+            col_r_buf[i] = np.interp(
+                self.log_freq_axis, self.log_freqs, norm_view[i, :, 1], left=0.0, right=0.0
+            )
+
+        if self.tilt_db_per_octave != 0.0:
+            col_l_buf *= self.freq_tilt_gain
+            col_r_buf *= self.freq_tilt_gain
+
+        col_l_view = col_l_buf[:, ::-1]
+        col_r_view = col_r_buf[:, ::-1]
+
+        for i in range(norm_view.shape[0]):
+            start_px = i * self.write_px
+            end_px = min(start_px + self.write_px, self.scroll_px)
+            if start_px >= self.scroll_px:
+                break
+            col_img_l[:, start_px:end_px] = col_l_view[i][:, None]
+            col_img_r[:, start_px:end_px] = col_r_view[i][:, None]
+
+        return (
+            (col_img_l * self.cfg.scroll.gain).astype(np.float32),
+            (col_img_r * self.cfg.scroll.gain).astype(np.float32),
+        )
 
     def _render_frame(self, frame_idx: int) -> np.ndarray:
         self.heat *= float(self.cfg.scroll.decay)
