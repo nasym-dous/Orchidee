@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class PathConfig:
-    audio_path: str = "0340.mp3"
+    audio_path: str = "0481 v41B.mp3"
     cover_path: str = "cover.jpeg"
     out_avi: str = "out.avi"
     out_final: str = "out_with_audio.mp4"
@@ -12,8 +12,8 @@ class PathConfig:
 
 @dataclass
 class AudioConfig:
-    target_sr: int = 44100
-    clip_audio: bool = True
+    target_sr: int = 48000
+    clip_audio: bool = False
     clip_seconds: int = 10
 
 
@@ -35,14 +35,14 @@ class EncodeConfig:
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1080
-    render_h: int = 1080
+    render_w: int = 1080*2
+    render_h: int = 1080*2
     batch: int = 8
     max_buffer_batches: int = 8
 
     # low-res alpha look
     baseline: float = 0.12
-    glow_sigma: float = 1.0
+    glow_sigma: float = 0.0
     draw_center_lines: bool = False
 
 
@@ -72,8 +72,8 @@ class ScrollConfig:
 class SpectrogramConfig:
     min_hz_bound: float = 2**5
     max_freq_hz: float = 2**13
-    scroll_px: int = 8
-    write_px: int = 2
+    scroll_px: int = 4
+    write_px: int = 4
     window_size: int = 2**13
     fft_size: int = 2**13
     floor_db: float = -80
