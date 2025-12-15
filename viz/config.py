@@ -19,8 +19,8 @@ class AudioConfig:
 
 @dataclass
 class VideoConfig:
-    w: int = 1080
-    h: int = 1080
+    w: int = 1080*2
+    h: int = 1080*2
     fps: int = 60
     fourcc: str = "MJPG"
 
