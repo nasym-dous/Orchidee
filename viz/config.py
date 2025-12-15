@@ -14,13 +14,13 @@ class PathConfig:
 class AudioConfig:
     target_sr: int = 48000
     clip_audio: bool = False
-    clip_seconds: int = 10
+    clip_seconds: int = 30
 
 
 @dataclass
 class VideoConfig:
-    w: int = 1080*2
-    h: int = 1080*2
+    w: int = 1920
+    h: int = 1080
     fps: int = 60
     fourcc: str = "MJPG"
 
@@ -36,13 +36,13 @@ class EncodeConfig:
 
 @dataclass
 class RenderConfig:
-    render_w: int = 1080*2
-    render_h: int = 1080*2
+    render_w: int = 1920
+    render_h: int = 1080
     batch: int = 8
     max_buffer_batches: int = 8
 
     # low-res alpha look
-    baseline: float = 0.12
+    baseline: float = 0.25
     glow_sigma: float = 0.0
     draw_center_lines: bool = False
 
@@ -72,16 +72,12 @@ class ScrollConfig:
 @dataclass
 class SpectrogramConfig:
     min_hz_bound: float = 2**5
-    max_freq_hz: float = 2**12
-    scroll_px: int = 4
-    write_px: int = 4
-    window_size: int = 2**12
-    fft_size: int = 2**12
-    floor_db: float = -80
-    ceiling_db: float = 0.0
-    pre_emphasis: float = 0
-    denoise_reduction_db: float = 0
-    tilt_db_per_octave: float = 0
+    max_freq_hz: float = 2**13
+    scroll_px: int = 16
+    write_px: int = 1
+    window_size: int = 2**13
+    fft_size: int = 2**13
+    tilt_db_per_octave: float = 3.0
 
 
 @dataclass
@@ -145,6 +141,3 @@ class AppConfig:
         assert self.spectrogram.scroll_px <= self.render.render_w
         assert self.spectrogram.window_size > 0
         assert self.spectrogram.fft_size >= self.spectrogram.window_size
-        assert self.spectrogram.floor_db < self.spectrogram.ceiling_db
-        assert 0.0 <= self.spectrogram.pre_emphasis < 1.0
-        assert self.spectrogram.denoise_reduction_db >= 0.0

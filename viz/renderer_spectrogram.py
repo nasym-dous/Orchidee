@@ -16,8 +16,6 @@ class SpectrogramRenderer:
         self.max_freq = float(cfg.spectrogram.max_freq_hz)
         self.scroll_px = max(int(cfg.spectrogram.scroll_px), 1)
         self.write_px = min(max(int(cfg.spectrogram.write_px), 1), self.scroll_px)
-        self.pre_emphasis = float(cfg.spectrogram.pre_emphasis)
-        self.denoise_reduction_db = float(cfg.spectrogram.denoise_reduction_db)
         self.tilt_db_per_octave = float(cfg.spectrogram.tilt_db_per_octave)
         self.window = _prepare_window(self.window_size)
         self.windowed_buf = np.zeros((self.window_size, 2), dtype=np.float32)
@@ -73,15 +71,8 @@ class SpectrogramRenderer:
             print(f"  fft_size       : {self.fft_size}")
             print(f"  min_freq_hz    : {self.min_freq}")
             print(f"  max_freq_hz    : {self.max_freq}")
-            if self.pre_emphasis > 0.0:
-                print(f"  pre_emphasis   : {self.pre_emphasis}")
-            if self.denoise_reduction_db > 0.0:
-                print(f"  denoise_db     : {self.denoise_reduction_db}")
             if self.tilt_db_per_octave != 0.0:
                 print(f"  tilt_db/octave : {self.tilt_db_per_octave}")
-
-        if self.pre_emphasis > 0.0:
-            self._apply_pre_emphasis()
 
     def _slice_audio(self, start: int) -> np.ndarray:
         end = start + self.window_size
@@ -99,10 +90,6 @@ class SpectrogramRenderer:
         spectrum = np.fft.rfft(windowed, n=self.fft_size, axis=0)[self.valid_bins]
         np.abs(spectrum, out=self.spectrum_buf)
         np.maximum(self.spectrum_buf, 1e-12, out=self.spectrum_buf)
-
-        if self.denoise_reduction_db > 0.0:
-            attenuation = 10.0 ** (self.denoise_reduction_db / 20.0)
-            np.divide(self.spectrum_buf, attenuation, out=self.spectrum_buf)
 
         peak = float(np.max(self.spectrum_buf))
         if peak <= 0.0:
@@ -148,14 +135,6 @@ class SpectrogramRenderer:
         alpha = 1.0 - np.exp(-self.heat * reveal_gain)
         alpha = np.clip(alpha ** gamma, 0.0, 1.0)
         return (alpha * 255.0).astype(np.uint8)
-
-    def _apply_pre_emphasis(self):
-        coef = self.pre_emphasis
-        # y[n] = x[n] - coef * x[n-1]
-        emphasized = np.empty_like(self.audio)
-        emphasized[0] = self.audio[0]
-        emphasized[1:] = self.audio[1:] - coef * self.audio[:-1]
-        self.audio = emphasized
 
     def next_alphas(self, t0: int, n: int) -> np.ndarray:
         frames = [self._render_frame(t0 + i) for i in range(n)]
