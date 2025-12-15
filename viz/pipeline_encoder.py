@@ -86,6 +86,7 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
             audio_path=cfg.audio.audio_path,
             out_mp4=cfg.paths.out_final,
             verbose=cfg.verbose,
+            encode=cfg.encode,
         )
 
     t = threading.Thread(target=_run, name="encoder_sink", daemon=True)

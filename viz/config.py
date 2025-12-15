@@ -25,6 +25,14 @@ class VideoConfig:
 
 
 @dataclass
+class EncodeConfig:
+    video_crf: int = 14
+    video_preset: str = "slow"
+    audio_bitrate: str = "320k"
+    audio_codec: str = "aac"
+
+
+@dataclass
 class RenderConfig:
     render_w: int = 360
     render_h: int = 360
@@ -77,6 +85,7 @@ class AppConfig:
     paths: PathConfig = field(default_factory=PathConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     video: VideoConfig = field(default_factory=VideoConfig)
+    encode: EncodeConfig = field(default_factory=EncodeConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
     spectrogram: SpectrogramConfig = field(default_factory=SpectrogramConfig)
@@ -99,6 +108,10 @@ class AppConfig:
     def validate(self):
         assert self.video.w > 0 and self.video.h > 0
         assert self.video.fps > 0
+        assert 0 <= self.encode.video_crf <= 51
+        assert self.encode.video_preset
+        assert self.encode.audio_bitrate
+        assert self.encode.audio_codec
         assert self.render.render_w > 0 and self.render.render_h > 0
         assert self.render.render_w % 2 == 0, "render_w doit être pair (split stéréo propre)"
         assert self.render.batch >= 1
