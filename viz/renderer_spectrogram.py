@@ -84,7 +84,8 @@ def _make_compute_columns(
 
     def compute_columns(frame_idx: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         windowed = slice_audio(frame_idx)
-        spectrum = jnp.fft.rfft(windowed, n=fft_size, axis=0)
+        # Metal backend requires FFT along the last axis, so operate on a transposed view.
+        spectrum = jnp.fft.rfft(windowed.T, n=fft_size, axis=-1).T
         spectrum = jnp.take(spectrum, valid_indices, axis=0)
         spectrum_mag = jnp.maximum(jnp.abs(spectrum), 1e-12)
 
