@@ -51,7 +51,16 @@ class SpectrogramRenderer:
         self.freq_axis = np.logspace(
             np.log10(self.min_freq), np.log10(self.max_freq), self.half_h, dtype=np.float32
         )
-        self.log_freq_axis = np.log10(self.freq_axis)
+        # Build log-spaced band edges so we can pool energy into each rendered row
+        # instead of linearly interpolating. This keeps low-frequency details sharp
+        # where bins are sparse.
+        freq_edges = np.empty(self.half_h + 1, dtype=np.float32)
+        freq_edges[0] = self.min_freq
+        freq_edges[-1] = self.max_freq
+        freq_edges[1:-1] = np.sqrt(self.freq_axis[:-1] * self.freq_axis[1:])
+        self.band_bin_edges = np.clip(
+            np.searchsorted(self.freqs, freq_edges, side="left"), 0, self.freqs.size
+        )
         octaves_from_min = np.log2(self.freq_axis / self.min_freq)
         self.freq_tilt_gain = (10.0 ** ((octaves_from_min * self.tilt_db_per_octave) / 20.0)).astype(
             np.float32
@@ -97,12 +106,25 @@ class SpectrogramRenderer:
         np.divide(self.spectrum_buf, peak, out=self.norm_buf)
         np.clip(self.norm_buf, 0.0, 1.0, out=self.norm_buf)
 
-        col_l = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 0], left=0.0, right=0.0
-        )
-        col_r = np.interp(
-            self.log_freq_axis, self.log_freqs, self.norm_buf[:, 1], left=0.0, right=0.0
-        )
+        col_l = np.empty(self.half_h, dtype=np.float32)
+        col_r = np.empty_like(col_l)
+
+        for i in range(self.half_h):
+            start = int(self.band_bin_edges[i])
+            end = int(self.band_bin_edges[i + 1])
+
+            if start >= self.norm_buf.shape[0]:
+                start = self.norm_buf.shape[0] - 1
+
+            if start >= end:
+                val_l = self.norm_buf[start, 0]
+                val_r = self.norm_buf[start, 1]
+            else:
+                val_l = float(np.max(self.norm_buf[start:end, 0]))
+                val_r = float(np.max(self.norm_buf[start:end, 1]))
+
+            col_l[i] = val_l
+            col_r[i] = val_r
 
         if self.tilt_db_per_octave != 0.0:
             col_l *= self.freq_tilt_gain
