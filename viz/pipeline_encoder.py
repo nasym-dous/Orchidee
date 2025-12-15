@@ -54,13 +54,16 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
         last_progress = 0.0
         progress_line_open = False
 
-        def print_progress():
+        def print_progress(force: bool = False):
             nonlocal last_progress, progress_line_open
             if not cfg.verbose or not total_frames:
                 return
 
+            if written >= total_frames and not force:
+                return
+
             now = time.perf_counter()
-            if now - last_progress < 0.25 and written != total_frames:
+            if not force and now - last_progress < 0.25:
                 return
 
             elapsed = now - perf.t0
@@ -123,15 +126,13 @@ def start_encoder_sink(cfg: AppConfig, frames_in: Queue, stop_token: object) -> 
 
         if cfg.verbose:
             if total_frames:
+                # ensure the final line is printed exactly once even if the last loop update ran
                 if progress_line_open:
                     print()
-                pct = min(perf.frames / max(total_frames, 1), 1.0)
-                bar = "#" * progress_width
-                stats = (
-                    f"100.0% | frames {perf.frames}/{total_frames}"
-                    f" | avg {perf.avg_fps():5.1f} fps | RAM ≈ {ram_mb():.0f} MB"
-                )
-                print(f"\r🚀 Rendering |{bar}| {stats}")
+                    progress_line_open = False
+                print_progress(force=True)
+                if progress_line_open:
+                    print()
             else:
                 print("\n🚀 Rendering complete")
             print(f"✅ Vidéo ffmpeg terminée : {cfg.paths.out_video}")
